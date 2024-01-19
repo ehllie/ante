@@ -5,6 +5,7 @@
 //! type system - and `TypeInfo`s - which hold more information about the
 //! definition of a user-defined type.
 use std::collections::BTreeMap;
+use std::marker::PhantomData;
 
 use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
@@ -430,18 +431,18 @@ pub enum TypeBinding {
 }
 
 #[derive(Debug)]
-pub struct TypeConstructor<'a> {
+pub struct TypeConstructor {
     pub name: String,
     pub args: Vec<Type>,
     pub id: DefinitionInfoId,
-    pub location: Location<'a>,
+    pub location: Location,
 }
 
 #[derive(Debug)]
-pub struct Field<'a> {
+pub struct Field {
     pub name: String,
     pub field_type: Type,
-    pub location: Location<'a>,
+    pub location: Location,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
@@ -459,9 +460,9 @@ pub const STRING_TYPE: TypeInfoId = TypeInfoId(0);
 pub const PAIR_TYPE: TypeInfoId = TypeInfoId(1);
 
 #[derive(Debug)]
-pub enum TypeInfoBody<'a> {
-    Union(Vec<TypeConstructor<'a>>),
-    Struct(Vec<Field<'a>>),
+pub enum TypeInfoBody {
+    Union(Vec<TypeConstructor>),
+    Struct(Vec<Field>),
     Alias(Type),
     Unknown,
 }
@@ -471,14 +472,15 @@ pub enum TypeInfoBody<'a> {
 pub struct TypeInfo<'a> {
     pub args: Vec<TypeVariableId>,
     pub name: String,
-    pub body: TypeInfoBody<'a>,
+    pub body: TypeInfoBody,
     pub uses: u32,
-    pub location: Location<'a>,
+    pub location: Location,
+    pub phantom: PhantomData<&'a ()>,
 }
 
-impl<'a> Locatable<'a> for TypeInfo<'a> {
-    fn locate(&self) -> Location<'a> {
-        self.location
+impl<'a> Locatable for TypeInfo<'a> {
+    fn locate(&self) -> Location {
+        self.location.clone()
     }
 }
 

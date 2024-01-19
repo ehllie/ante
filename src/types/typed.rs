@@ -9,7 +9,7 @@ pub trait Typed {
     fn set_type(&mut self, typ: Type);
 }
 
-impl<'a> Typed for Ast<'a> {
+impl Typed for Ast {
     fn get_type(&self) -> Option<&Type> {
         dispatch_on_expr!(self, Typed::get_type)
     }
@@ -21,7 +21,7 @@ impl<'a> Typed for Ast<'a> {
 
 macro_rules! impl_typed_for {
     ( $name:tt ) => {
-        impl<'a> Typed for $name<'a> {
+        impl Typed for $name {
             fn get_type(&self) -> Option<&Type> {
                 self.typ.as_ref()
             }

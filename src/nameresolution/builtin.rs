@@ -38,7 +38,7 @@ pub const PAIR_ID: DefinitionInfoId = DefinitionInfoId(2);
 pub fn define_builtins(cache: &mut ModuleCache) {
     // Define builtin : forall a. string -> a imported only into the prelude to define
     // builtin operations by name. The specific string arguments are matched on in src/llvm/builtin.rs
-    let id = cache.push_definition("builtin", Location::builtin());
+    let id = cache.push_definition("builtin", &Location::builtin());
     assert_eq!(id, BUILTIN_ID);
 
     let string_type = define_string(cache);
@@ -73,9 +73,9 @@ pub fn import_prelude(resolver: &mut NameResolver, cache: &mut ModuleCache<'_>) 
     } else {
         // Otherwise, import the prelude itself
         let prelude_dir = prelude_path();
-        if let Some(id) = declare_module(&prelude_dir, cache, Location::builtin()) {
-            let exports = define_module(id, cache, Location::builtin()).unwrap();
-            resolver.current_scope().import(exports, cache, Location::builtin(), &HashSet::new());
+        if let Some(id) = declare_module(&prelude_dir, cache, &Location::builtin()) {
+            let exports = define_module(id, cache, &Location::builtin()).unwrap();
+            resolver.current_scope().import(exports, cache, &Location::builtin(), &HashSet::new());
         }
     }
 
@@ -101,16 +101,16 @@ fn define_string(cache: &mut ModuleCache) -> Type {
     let length_type = Type::int(IntegerKind::Usz);
 
     let name = "String".to_string();
-    let string_id = cache.push_type_info(name.clone(), vec![], location);
+    let string_id = cache.push_type_info(name.clone(), vec![], &location);
     assert_eq!(string_id, STRING_TYPE);
     let string = Type::UserDefined(STRING_TYPE);
 
     let fields = TypeInfoBody::Struct(vec![
-        Field { name: "c_string".into(), field_type: c_string_type.clone(), location },
-        Field { name: "length".into(), field_type: length_type.clone(), location },
+        Field { name: "c_string".into(), field_type: c_string_type.clone(), location: location.clone() },
+        Field { name: "length".into(), field_type: length_type.clone(), location: location.clone() },
     ]);
 
-    let constructor = cache.push_definition(&name, location);
+    let constructor = cache.push_definition(&name, &location);
     assert_eq!(constructor, STRING_ID);
 
     let effects = cache.next_type_variable_id(LetBindingLevel(1));
@@ -143,12 +143,12 @@ fn define_pair(cache: &mut ModuleCache) {
     let b = cache.next_type_variable_id(level);
 
     let name = Token::Comma.to_string();
-    let pair = cache.push_type_info(name.clone(), vec![a, b], location);
+    let pair = cache.push_type_info(name.clone(), vec![a, b], &location);
     assert_eq!(pair, PAIR_TYPE);
 
     cache.type_infos[pair.0].body = TypeInfoBody::Struct(vec![
-        Field { name: "first".into(), field_type: Type::TypeVariable(a), location },
-        Field { name: "second".into(), field_type: Type::TypeVariable(b), location },
+        Field { name: "first".into(), field_type: Type::TypeVariable(a), location: location.clone() },
+        Field { name: "second".into(), field_type: Type::TypeVariable(b), location: location.clone() },
     ]);
 
     // The type is defined, now we define the constructor
@@ -169,7 +169,7 @@ fn define_pair(cache: &mut ModuleCache) {
     let constructor_type = GeneralizedType::PolyType(vec![a, b, e], constructor_type);
 
     // and now register a new type constructor in the cache with the given type
-    let id = cache.push_definition(&name, location);
+    let id = cache.push_definition(&name, &location);
     assert_eq!(id, PAIR_ID);
     let constructor = DefinitionKind::TypeConstructor { name, tag: None };
 

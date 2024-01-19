@@ -24,6 +24,7 @@ use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
 use crate::util::stdlib_dir;
 
 use std::collections::{HashMap, HashSet};
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use self::dependency_graph::DependencyGraph;
@@ -48,7 +49,7 @@ pub struct ModuleCache<'a> {
 
     /// Maps ModuleId -> Ast
     /// Contains all the parse trees parsed by the program.
-    pub parse_trees: UnsafeCache<'a, Ast<'a>>,
+    pub parse_trees: UnsafeCache<'a, Ast>,
 
     /// Used to map paths to parse trees or name resolvers
     pub modules: HashMap<PathBuf, ModuleId>,
@@ -154,16 +155,16 @@ impl std::fmt::Debug for DefinitionInfoId {
 #[derive(Debug)]
 pub enum DefinitionKind<'a> {
     /// A variable/function definition in the form `a = b`
-    Definition(&'a mut Definition<'a>),
+    Definition(&'a mut Definition),
 
     /// A trait definition in the form `trait A a with ...`
-    TraitDefinition(&'a mut TraitDefinition<'a>),
+    TraitDefinition(&'a mut TraitDefinition),
 
     /// An effect definition in the form `effect E with ...`
-    EffectDefinition(&'a mut EffectDefinition<'a>),
+    EffectDefinition(&'a mut EffectDefinition),
 
     /// An extern FFI definition with no body
-    Extern(&'a mut Extern<'a>),
+    Extern(&'a mut Extern),
 
     /// A TypeConstructor function to construct a type.
     /// If the constructed type is a tagged union, tag will
@@ -191,7 +192,7 @@ pub enum DefinitionKind<'a> {
 #[derive(Debug)]
 pub struct DefinitionInfo<'a> {
     pub name: String,
-    pub location: Location<'a>,
+    pub location: Location,
 
     /// Where this name was defined. It is expected that type checking
     /// this Definition kind should result in self.typ being filled out.
@@ -239,9 +240,9 @@ pub struct DefinitionInfo<'a> {
     pub uses: u32,
 }
 
-impl<'a> Locatable<'a> for DefinitionInfo<'a> {
-    fn locate(&self) -> Location<'a> {
-        self.location
+impl<'a> Locatable for DefinitionInfo<'a> {
+    fn locate(&self) -> Location {
+        self.location.clone()
     }
 }
 
@@ -263,7 +264,8 @@ pub struct VariableId(pub usize);
 pub struct VariableInfo<'a> {
     pub required_impls: Vec<RequiredImpl>,
     pub name: String,
-    pub location: Location<'a>,
+    pub location: Location,
+    phantom: PhantomData<&'a ()>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
@@ -289,7 +291,7 @@ pub struct TraitInfo<'a> {
     /// These are the `d e f` in `trait Foo a b c -> d e f with ...`
     pub fundeps: Vec<TypeVariableId>,
 
-    pub location: Location<'a>,
+    pub location: Location,
 
     /// The definitions included in this trait defintion.
     /// The term `defintion` is used somewhat loosely here
@@ -300,14 +302,14 @@ pub struct TraitInfo<'a> {
 
     /// The Ast node that defines this trait.
     /// A value of None means this trait was builtin to the compiler
-    pub trait_node: Option<&'a mut TraitDefinition<'a>>,
+    pub trait_node: Option<&'a mut TraitDefinition>,
 
     pub uses: u32,
 }
 
-impl<'a> Locatable<'a> for TraitInfo<'a> {
-    fn locate(&self) -> Location<'a> {
-        self.location
+impl<'a> Locatable for TraitInfo<'a> {
+    fn locate(&self) -> Location {
+        self.location.clone()
     }
 }
 
@@ -329,14 +331,14 @@ pub struct ImplInfoId(pub usize);
 pub struct ImplInfo<'a> {
     pub trait_id: TraitInfoId,
     pub typeargs: Vec<Type>,
-    pub location: Location<'a>,
+    pub location: Location,
     pub definitions: Vec<DefinitionInfoId>,
 
     /// These constraints are from the 'given' clause of a trait impl.
     /// They contain a unique TraitConstraintId that is used to map the
     /// constraints inside the impl's definitions.
     pub given: Vec<ConstraintSignature>,
-    pub trait_impl: &'a mut TraitImpl<'a>,
+    pub trait_impl: &'a mut TraitImpl,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -348,20 +350,20 @@ pub struct EffectInfoId(pub usize);
 pub struct EffectInfo<'a> {
     pub name: String,
 
-    pub effect_node: &'a mut EffectDefinition<'a>,
+    pub effect_node: &'a mut EffectDefinition,
 
     /// Type variables on the effect declaration itself.
     /// Unlike traits, this may be empty.
     pub typeargs: Vec<TypeVariableId>,
 
-    pub location: Location<'a>,
+    pub location: Location,
 
     pub declarations: Vec<DefinitionInfoId>,
 }
 
-impl<'a> Locatable<'a> for EffectInfo<'a> {
-    fn locate(&self) -> Location<'a> {
-        self.location
+impl<'a> Locatable for EffectInfo<'a> {
+    fn locate(&self) -> Location {
+        self.location.clone()
     }
 }
 
@@ -396,14 +398,14 @@ impl<'a> ModuleCache<'a> {
         unsafe { std::mem::transmute(path) }
     }
 
-    pub fn push_definition(&mut self, name: &str, location: Location<'a>) -> DefinitionInfoId {
+    pub fn push_definition(&mut self, name: &str, location: &Location) -> DefinitionInfoId {
         let id = self.definition_infos.len();
         self.definition_infos.push(DefinitionInfo {
             name: name.to_string(),
             definition: None,
             trait_info: None,
             required_traits: vec![],
-            location,
+            location: location.clone(),
             typ: None,
             uses: 0,
             trait_impl: None,
@@ -415,13 +417,20 @@ impl<'a> ModuleCache<'a> {
         DefinitionInfoId(id)
     }
 
-    pub fn push_ast(&mut self, ast: Ast<'a>) -> ModuleId {
+    pub fn push_ast(&mut self, ast: Ast) -> ModuleId {
         ModuleId(self.parse_trees.push(ast))
     }
 
-    pub fn push_type_info(&mut self, name: String, args: Vec<TypeVariableId>, location: Location<'a>) -> TypeInfoId {
+    pub fn push_type_info(&mut self, name: String, args: Vec<TypeVariableId>, location: &Location) -> TypeInfoId {
         let id = self.type_infos.len();
-        let type_info = TypeInfo { name, args, location, uses: 0, body: TypeInfoBody::Unknown };
+        let type_info = TypeInfo {
+            name,
+            args,
+            location: location.clone(),
+            uses: 0,
+            body: TypeInfoBody::Unknown,
+            phantom: PhantomData,
+        };
         self.type_infos.push(type_info);
         TypeInfoId(id)
     }
@@ -444,7 +453,7 @@ impl<'a> ModuleCache<'a> {
 
     pub fn push_trait_definition(
         &mut self, name: String, typeargs: Vec<TypeVariableId>, fundeps: Vec<TypeVariableId>,
-        trait_node: Option<&'a mut TraitDefinition<'a>>, location: Location<'a>,
+        trait_node: Option<&'a mut TraitDefinition>, location: &Location,
     ) -> TraitInfoId {
         let id = self.trait_infos.len();
         self.trait_infos.push(TraitInfo {
@@ -453,7 +462,7 @@ impl<'a> ModuleCache<'a> {
             fundeps,
             definitions: vec![],
             trait_node,
-            location,
+            location: location.clone(),
             uses: 0,
         });
         TraitInfoId(id)
@@ -461,7 +470,7 @@ impl<'a> ModuleCache<'a> {
 
     pub fn push_trait_impl(
         &mut self, trait_id: TraitInfoId, typeargs: Vec<Type>, definitions: Vec<DefinitionInfoId>,
-        trait_impl: &'a mut TraitImpl<'a>, given: Vec<ConstraintSignature>, location: Location<'a>,
+        trait_impl: &'a mut TraitImpl, given: Vec<ConstraintSignature>, location: &Location,
     ) -> ImplInfoId {
         let id = self.impl_infos.len();
 
@@ -472,16 +481,29 @@ impl<'a> ModuleCache<'a> {
             self[*definition].trait_impl = Some(ImplInfoId(id));
         }
 
-        self.impl_infos.push(ImplInfo { trait_id, typeargs, definitions, location, given, trait_impl });
+        self.impl_infos.push(ImplInfo {
+            trait_id,
+            typeargs,
+            definitions,
+            location: location.clone(),
+            given,
+            trait_impl,
+        });
         ImplInfoId(id)
     }
 
     pub fn push_effect_definition(
-        &mut self, name: String, typeargs: Vec<TypeVariableId>, effect_node: &'a mut EffectDefinition<'a>,
-        location: Location<'a>,
+        &mut self, name: String, typeargs: Vec<TypeVariableId>, effect_node: &'a mut EffectDefinition,
+        location: &Location,
     ) -> EffectInfoId {
         let id = self.effect_infos.len();
-        self.effect_infos.push(EffectInfo { name, typeargs, effect_node, declarations: vec![], location });
+        self.effect_infos.push(EffectInfo {
+            name,
+            typeargs,
+            effect_node,
+            declarations: vec![],
+            location: location.clone(),
+        });
         EffectInfoId(id)
     }
 
@@ -491,9 +513,14 @@ impl<'a> ModuleCache<'a> {
         ImplScopeId(id)
     }
 
-    pub fn push_variable(&mut self, name: String, location: Location<'a>) -> VariableId {
+    pub fn push_variable(&mut self, name: String, location: &Location) -> VariableId {
         let id = self.variable_infos.len();
-        self.variable_infos.push(VariableInfo { required_impls: vec![], name, location });
+        self.variable_infos.push(VariableInfo {
+            required_impls: vec![],
+            name,
+            location: location.clone(),
+            phantom: PhantomData,
+        });
         VariableId(id)
     }
 

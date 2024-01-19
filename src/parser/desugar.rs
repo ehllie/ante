@@ -5,11 +5,9 @@ use crate::parser::ast::Ast;
 use crate::{error::location::Locatable, lexer::token::Token, parser::ast, util::fmap};
 
 /// Turns `(foo _  _ 2)` into `(fn $1 $2 -> (foo $1 $2 2))`
-pub fn desugar_explicit_currying<'a, F>(
-    function: Ast<'a>, args: Vec<Ast<'a>>, make_function_call: F, loc: Location<'a>,
-) -> Ast<'a>
+pub fn desugar_explicit_currying<'a, F>(function: Ast, args: Vec<Ast>, make_function_call: F, loc: &Location) -> Ast
 where
-    F: FnOnce(Ast<'a>, Vec<Ast<'a>>, Location<'a>) -> Ast<'a>,
+    F: FnOnce(Ast, Vec<Ast>, &Location) -> Ast,
 {
     if args.iter().any(matches_underscore) {
         curried_function_call(function, args, make_function_call, loc)
@@ -18,25 +16,25 @@ where
     }
 }
 
-fn curried_function_call<'a, F>(function: Ast<'a>, args: Vec<Ast<'a>>, call_function: F, loc: Location<'a>) -> Ast<'a>
+fn curried_function_call<'a, F>(function: Ast, args: Vec<Ast>, call_function: F, loc: &Location) -> Ast
 where
-    F: FnOnce(Ast<'a>, Vec<Ast<'a>>, Location<'a>) -> Ast<'a>,
+    F: FnOnce(Ast, Vec<Ast>, &Location) -> Ast,
 {
     let mut curried_args = vec![];
     let mut curried_arg_count = 0;
-    let args: Vec<Ast<'a>> = fmap(args, |arg| {
+    let args: Vec<Ast> = fmap(args, |arg| {
         if matches_underscore(&arg) {
             curried_arg_count += 1;
             let curried_arg = format!("${}", curried_arg_count);
-            curried_args.push(Ast::variable(vec![], curried_arg.clone(), arg.locate()));
-            Ast::variable(vec![], curried_arg, arg.locate()) // TODO: add correct module prefix
+            curried_args.push(Ast::variable(vec![], curried_arg.clone(), &arg.locate()));
+            Ast::variable(vec![], curried_arg, &arg.locate()) // TODO: add correct module prefix
         } else {
             arg
         }
     });
 
-    let function_call = call_function(function, args, loc);
-    Ast::lambda(curried_args, None, function_call, loc)
+    let function_call = call_function(function, args, &loc);
+    Ast::lambda(curried_args, None, function_call, &loc)
 }
 
 fn matches_underscore(arg: &Ast) -> bool {
@@ -50,8 +48,8 @@ fn matches_underscore(arg: &Ast) -> bool {
 ///
 /// Also handles explicitly curried operators. E.g. `_ or false` will
 /// be translated as `fn $1 -> if $1 then true else false`
-pub fn desugar_operators<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
-    let call_operator_function = |function: Ast<'a>, mut arguments: Vec<Ast<'a>>, location| {
+pub fn desugar_operators<'a>(operator: Token, lhs: Ast, rhs: Ast, location: &Location) -> Ast {
+    let call_operator_function = |function: Ast, mut arguments: Vec<Ast>, location: &Location| {
         let rhs = arguments.pop().unwrap();
         let lhs = arguments.pop().unwrap();
 
@@ -72,7 +70,7 @@ pub fn desugar_operators<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, locati
     desugar_explicit_currying(operator_symbol, vec![lhs, rhs], call_operator_function, location)
 }
 
-fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+fn prepend_argument_to_function<'a>(f: Ast, arg: Ast, location: &Location) -> Ast {
     match f {
         Ast::FunctionCall(mut call) => {
             call.args.insert(0, arg);
@@ -82,12 +80,12 @@ fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location
     }
 }
 
-pub fn desugar_loop<'a>(params_defaults: Vec<(Ast<'a>, Ast<'a>)>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+pub fn desugar_loop<'a>(params_defaults: Vec<(Ast, Ast)>, body: Ast, location: &Location) -> Ast {
     let (params, args) = params_defaults.into_iter().unzip();
-    let recur_name = || Ast::variable(vec![], "recur".to_owned(), location);
-    let recur_def = Ast::definition(recur_name(), Ast::lambda(params, None, body, location), location);
-    let recur_call = Ast::function_call(recur_name(), args, location);
-    Ast::new_scope(Ast::sequence(vec![recur_def, recur_call], location), location)
+    let recur_name = || Ast::variable(vec![], "recur".to_owned(), &location);
+    let recur_def = Ast::definition(recur_name(), Ast::lambda(params, None, body, &location), &location);
+    let recur_call = Ast::function_call(recur_name(), args, &location);
+    Ast::new_scope(Ast::sequence(vec![recur_def, recur_call], &location), &location)
 }
 
 /// Desugar:
@@ -106,7 +104,7 @@ pub fn desugar_loop<'a>(params_defaults: Vec<(Ast<'a>, Ast<'a>)>, body: Ast<'a>,
 /// | get () -> resume ()
 ///
 /// So that we do not need to duplicate pattern matching logic inside Ast::Handle
-pub fn desugar_handle_branches_into_matches<'a>(branches: Vec<(Ast<'a>, Ast<'a>)>) -> Vec<(Ast<'a>, Ast<'a>)> {
+pub fn desugar_handle_branches_into_matches<'a>(branches: Vec<(Ast, Ast)>) -> Vec<(Ast, Ast)> {
     // BTreeMap is used here for a deterministic ordering for tests
     let mut cases = BTreeMap::new();
 
@@ -115,7 +113,7 @@ pub fn desugar_handle_branches_into_matches<'a>(branches: Vec<(Ast<'a>, Ast<'a>)
             Ast::FunctionCall(call) => match call.function.as_ref() {
                 Ast::Variable(name) => {
                     let arg_len = call.args.len();
-                    let args = tuplify(call.args, call.location);
+                    let args = tuplify(call.args, &call.location);
                     (name.to_string(), args, arg_len, call.location)
                 },
                 _ => unreachable!("Invalid syntax in pattern of 'handle' expression"),
@@ -129,16 +127,16 @@ pub fn desugar_handle_branches_into_matches<'a>(branches: Vec<(Ast<'a>, Ast<'a>)
 
     fmap(cases, |((name, args_len), (branches, location))| {
         // _$0, _$1, ...
-        let new_args1 = fmap(0..args_len, |i| Ast::variable(vec![], format!("_${}", i), location));
+        let new_args1 = fmap(0..args_len, |i| Ast::variable(vec![], format!("_${}", i), &location));
         // Ast doesn't impl Clone currently
-        let new_args2 = fmap(0..args_len, |i| Ast::variable(vec![], format!("_${}", i), location));
+        let new_args2 = fmap(0..args_len, |i| Ast::variable(vec![], format!("_${}", i), &location));
 
-        let expr = tuplify(new_args1, location);
-        let match_expr = Ast::match_expr(expr, branches, location);
+        let expr = tuplify(new_args1, &location);
+        let match_expr = Ast::match_expr(expr, branches, &location);
 
         // TODO: Do we need to forward the module prefix here?
-        let handle_effect = Ast::variable(vec![], name, location);
-        let handle_pattern = Ast::function_call(handle_effect, new_args2, location);
+        let handle_effect = Ast::variable(vec![], name, &location);
+        let handle_pattern = Ast::function_call(handle_effect, new_args2, &location);
         (handle_pattern, match_expr)
     })
 }
@@ -150,14 +148,14 @@ fn empty_string_literal(ast: &Ast) -> bool {
     }
 }
 
-fn append<'a>(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
-    let append = Ast::operator(Token::Append, location);
-    Ast::function_call(append, vec![lhs, rhs], location)
+fn append<'a>(lhs: Ast, rhs: Ast, location: &Location) -> Ast {
+    let append = Ast::operator(Token::Append, &location);
+    Ast::function_call(append, vec![lhs, rhs], &location)
 }
 
-pub fn interpolate<'a>(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
-    let cast = Ast::variable(vec![], String::from("cast"), location);
-    let lhs = Ast::function_call(cast, vec![lhs], location);
+pub fn interpolate<'a>(lhs: Ast, rhs: Ast, location: &Location) -> Ast {
+    let cast = Ast::variable(vec![], String::from("cast"), &location);
+    let lhs = Ast::function_call(cast, vec![lhs], &location);
     match rhs {
         // Don't append empty strings
         ast if empty_string_literal(&ast) => lhs,
@@ -165,7 +163,7 @@ pub fn interpolate<'a>(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> As
     }
 }
 
-pub fn concatenate_strings<'a>(head: Ast<'a>, tail: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+pub fn concatenate_strings<'a>(head: Ast, tail: Vec<Ast>, location: &Location) -> Ast {
     let mut tail = tail.into_iter();
     match tail.next() {
         Some(expr) => {
@@ -173,7 +171,9 @@ pub fn concatenate_strings<'a>(head: Ast<'a>, tail: Vec<Ast<'a>>, location: Loca
             // Explicitly using the iterator rather than recursion,
             // since this optimisation can only apply to the head
             let mut ret = match head {
-                ast if empty_string_literal(&ast) => Ast::type_annotation(expr, ast::Type::String(location), location),
+                ast if empty_string_literal(&ast) => {
+                    Ast::type_annotation(expr, ast::Type::String(location.clone()), &location)
+                },
                 _ => append(head, expr, location),
             };
             for expr in tail {
@@ -187,7 +187,7 @@ pub fn concatenate_strings<'a>(head: Ast<'a>, tail: Vec<Ast<'a>>, location: Loca
 
 /// Wrap all arguments in a tuple of nested pairs.
 /// This could be more efficient, using e.g. a VecDeque
-fn tuplify<'a>(mut args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+fn tuplify<'a>(mut args: Vec<Ast>, location: &Location) -> Ast {
     assert!(!args.is_empty());
 
     if args.len() == 1 {
@@ -195,14 +195,14 @@ fn tuplify<'a>(mut args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
     } else {
         let first = args.remove(0);
         let rest = tuplify(args, location);
-        let function = Ast::operator(Token::Comma, location);
-        Ast::function_call(function, vec![first, rest], location)
+        let function = Ast::operator(Token::Comma, &location);
+        Ast::function_call(function, vec![first, rest], &location)
     }
 }
 
-pub fn desugar_if_with_no_else<'a>(condition: Ast<'a>, then: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+pub fn desugar_if_with_no_else<'a>(condition: Ast, then: Ast, location: &Location) -> Ast {
     let then = Box::new(Ast::sequence(vec![then, Ast::unit_literal(location)], location));
     let otherwise = Box::new(Ast::unit_literal(location));
 
-    Ast::If(ast::If { condition: Box::new(condition), then, otherwise, location, typ: None })
+    Ast::If(ast::If { condition: Box::new(condition), then, otherwise, location: location.clone(), typ: None })
 }

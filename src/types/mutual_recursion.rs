@@ -19,7 +19,7 @@ use super::{
 };
 
 pub(super) fn try_generalize_definition<'c>(
-    definition: &mut ast::Definition<'c>, t: Type, traits: TraitConstraints, cache: &mut ModuleCache<'c>,
+    definition: &mut ast::Definition, t: Type, traits: TraitConstraints, cache: &mut ModuleCache<'c>,
 ) -> TraitConstraints {
     if !should_generalize(&definition.expr, cache) {
         return traits;

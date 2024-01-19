@@ -198,7 +198,7 @@ fn find_matching_effect(effect: &Effect, set: &[Effect], cache: &mut ModuleCache
             let no_error = "";
 
             if let Ok(bindings) =
-                typechecker::try_unify_all_with_bindings(effect_args, other_args, bindings, no_loc, cache, no_error)
+                typechecker::try_unify_all_with_bindings(effect_args, other_args, bindings, &no_loc, cache, no_error)
             {
                 return Ok(bindings);
             }

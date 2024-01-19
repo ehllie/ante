@@ -223,9 +223,9 @@ fn solve_normal_constraint(constraint: &TraitConstraint, cache: &mut ModuleCache
             let impl_id = impls[0].0;
             if i == 2 && matching_impls.len() > max_shown_impls {
                 let rest = matching_impls.len() - max_shown_impls;
-                note!(cache[impl_id].location, "Candidate {} ({} more hidden)", i + 1, rest);
+                note!(cache[impl_id].location.clone(), "Candidate {} ({} more hidden)", i + 1, rest);
             } else {
-                note!(cache[impl_id].location, "Candidate {}", i + 1);
+                note!(cache[impl_id].location.clone(), "Candidate {}", i + 1);
             }
         }
     } else {
@@ -291,7 +291,7 @@ fn find_matching_normal_impls(
                 &impl_typeargs,
                 constraint.args(),
                 bindings.clone(),
-                location,
+                &location,
                 cache,
                 "never shown",
             )

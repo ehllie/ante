@@ -9,13 +9,13 @@ use std::sync::atomic::Ordering;
 
 static INDENT_LEVEL: AtomicUsize = AtomicUsize::new(0);
 
-impl<'a> Display for Ast<'a> {
+impl<'a> Display for Ast {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         dispatch_on_expr!(self, Display::fmt, f)
     }
 }
 
-impl<'a> Display for ast::Literal<'a> {
+impl<'a> Display for ast::Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::LiteralKind::*;
         match &self.kind {
@@ -29,7 +29,7 @@ impl<'a> Display for ast::Literal<'a> {
     }
 }
 
-impl<'a> Display for ast::Variable<'a> {
+impl<'a> Display for ast::Variable {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::VariableKind::*;
         let mut prefix = self.module_prefix.join(".");
@@ -44,7 +44,7 @@ impl<'a> Display for ast::Variable<'a> {
     }
 }
 
-impl<'a> Display for ast::Lambda<'a> {
+impl<'a> Display for ast::Lambda {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(fn")?;
         for arg in self.args.iter() {
@@ -57,25 +57,25 @@ impl<'a> Display for ast::Lambda<'a> {
     }
 }
 
-impl<'a> Display for ast::FunctionCall<'a> {
+impl<'a> Display for ast::FunctionCall {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "({} {})", self.function, join_with(&self.args, " "))
     }
 }
 
-impl<'a> Display for ast::Definition<'a> {
+impl<'a> Display for ast::Definition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "({} = {})", self.pattern, self.expr)
     }
 }
 
-impl<'a> Display for ast::If<'a> {
+impl<'a> Display for ast::If {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(if {} then {} else {})", self.condition, self.then, self.otherwise)
     }
 }
 
-impl<'a> Display for ast::Match<'a> {
+impl<'a> Display for ast::Match {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(match {}", self.expression)?;
         for (pattern, branch) in self.branches.iter() {
@@ -85,7 +85,7 @@ impl<'a> Display for ast::Match<'a> {
     }
 }
 
-impl<'a> Display for ast::Type<'a> {
+impl<'a> Display for ast::Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::Type::*;
         match self {
@@ -116,7 +116,7 @@ impl<'a> Display for ast::Type<'a> {
     }
 }
 
-impl<'a> Display for ast::TypeDefinitionBody<'a> {
+impl<'a> Display for ast::TypeDefinitionBody {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::TypeDefinitionBody::*;
         match self {
@@ -136,20 +136,20 @@ impl<'a> Display for ast::TypeDefinitionBody<'a> {
     }
 }
 
-impl<'a> Display for ast::TypeDefinition<'a> {
+impl<'a> Display for ast::TypeDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let args = join_with(&self.args, "");
         write!(f, "(type {} {} = {})", self.name, args, self.definition)
     }
 }
 
-impl<'a> Display for ast::TypeAnnotation<'a> {
+impl<'a> Display for ast::TypeAnnotation {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(: {} {})", self.lhs, self.rhs)
     }
 }
 
-impl<'a> Display for ast::Import<'a> {
+impl<'a> Display for ast::Import {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut import_path = join_with(&self.path, ".");
         let symbols = join_with(&self.symbols, " ");
@@ -160,7 +160,7 @@ impl<'a> Display for ast::Import<'a> {
     }
 }
 
-impl<'a> Display for ast::TraitDefinition<'a> {
+impl<'a> Display for ast::TraitDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(trait {} {} ", self.name, join_with(&self.args, " "))?;
         if !self.fundeps.is_empty() {
@@ -170,7 +170,7 @@ impl<'a> Display for ast::TraitDefinition<'a> {
     }
 }
 
-impl<'a> Display for ast::TraitImpl<'a> {
+impl<'a> Display for ast::TraitImpl {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let args = join_with(&self.trait_args, " ");
         let definitions = join_with(&self.definitions, "\n    ");
@@ -187,20 +187,20 @@ impl<'a> Display for ast::TraitImpl<'a> {
     }
 }
 
-impl<'a> Display for ast::Trait<'a> {
+impl<'a> Display for ast::Trait {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let args = join_with(&self.args, " ");
         write!(f, "({} {})", self.name, args)
     }
 }
 
-impl<'a> Display for ast::Return<'a> {
+impl<'a> Display for ast::Return {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(return {})", self.expression)
     }
 }
 
-impl<'a> Display for ast::Sequence<'a> {
+impl<'a> Display for ast::Sequence {
     /// Whenever printing out a Sequence, pretty-print the indented
     /// block as well so that larger programs are easier to read.
     ///
@@ -235,25 +235,25 @@ impl<'a> Display for ast::Sequence<'a> {
     }
 }
 
-impl<'a> Display for ast::Extern<'a> {
+impl<'a> Display for ast::Extern {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(extern\n    {})", join_with(&self.declarations, "\n    "))
     }
 }
 
-impl<'a> Display for ast::MemberAccess<'a> {
+impl<'a> Display for ast::MemberAccess {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "({}.{})", self.lhs, self.field)
     }
 }
 
-impl<'a> Display for ast::Assignment<'a> {
+impl<'a> Display for ast::Assignment {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "({} := {})", self.lhs, self.rhs)
     }
 }
 
-impl<'a> Display for ast::EffectDefinition<'a> {
+impl<'a> Display for ast::EffectDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(effect {} ", self.name)?;
         if !self.args.is_empty() {
@@ -263,7 +263,7 @@ impl<'a> Display for ast::EffectDefinition<'a> {
     }
 }
 
-impl<'a> Display for ast::Handle<'a> {
+impl<'a> Display for ast::Handle {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(handle {}", self.expression)?;
         for (pattern, branch) in self.branches.iter() {
@@ -273,7 +273,7 @@ impl<'a> Display for ast::Handle<'a> {
     }
 }
 
-impl<'a> Display for ast::NamedConstructor<'a> {
+impl<'a> Display for ast::NamedConstructor {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let args = fmap(self.args.iter(), |(name, expr)| format!("{name} = {expr}"));
         write!(f, "({} with {})", self.constructor, args.join(", "))

@@ -14,7 +14,7 @@ use super::{
 use crate::hir;
 
 impl<'c> Context<'c> {
-    pub fn monomorphise_match(&mut self, match_: &ast::Match<'c>) -> hir::Ast {
+    pub fn monomorphise_match(&mut self, match_: &ast::Match) -> hir::Ast {
         let match_prelude = self.store_initial_value(match_);
         let decision_tree = self.monomorphise_tree(match_.decision_tree.as_ref().unwrap());
         let branches = fmap(&match_.branches, |branch| self.monomorphise(&branch.1));
@@ -27,7 +27,7 @@ impl<'c> Context<'c> {
 
     /// Compile the expression to match on and store it in the DefinitionInfoId expected
     /// by the first Case of the DecisionTree
-    fn store_initial_value(&mut self, match_: &ast::Match<'c>) -> hir::Ast {
+    fn store_initial_value(&mut self, match_: &ast::Match) -> hir::Ast {
         let value = self.monomorphise(match_.expression.as_ref());
 
         if let Some(DecisionTree::Switch(id, _)) = &match_.decision_tree {

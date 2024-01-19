@@ -77,37 +77,41 @@ pub enum ErrorType {
 
 /// An error (or warning/note) message to be printed out on screen.
 #[derive(Debug, PartialEq, Eq)]
-pub struct ErrorMessage<'a> {
+pub struct ErrorMessage {
     msg: ColoredString,
     error_type: ErrorType,
-    location: Location<'a>,
+    location: Location,
 }
 
 /// ErrorMessages are ordered so we can issue them in a
 /// deterministic order for the golden tests.
-impl<'a> Ord for ErrorMessage<'a> {
+impl Ord for ErrorMessage {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         use std::ops::Deref;
-        (self.location, self.error_type, self.msg.deref()).cmp(&(other.location, other.error_type, &other.msg))
+        (self.location.clone(), self.error_type, self.msg.deref()).cmp(&(
+            other.location.clone(),
+            other.error_type,
+            &other.msg,
+        ))
     }
 }
 
-impl<'a> PartialOrd for ErrorMessage<'a> {
+impl PartialOrd for ErrorMessage {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<'a> ErrorMessage<'a> {
-    pub fn error<T: Into<ColoredString>>(msg: T, location: Location<'a>) -> ErrorMessage<'a> {
+impl ErrorMessage {
+    pub fn error<T: Into<ColoredString>>(msg: T, location: Location) -> ErrorMessage {
         ErrorMessage { msg: msg.into(), location, error_type: ErrorType::Error }
     }
 
-    pub fn warning<T: Into<ColoredString>>(msg: T, location: Location<'a>) -> ErrorMessage<'a> {
+    pub fn warning<T: Into<ColoredString>>(msg: T, location: Location) -> ErrorMessage {
         ErrorMessage { msg: msg.into(), location, error_type: ErrorType::Warning }
     }
 
-    pub fn note<T: Into<ColoredString>>(msg: T, location: Location<'a>) -> ErrorMessage<'a> {
+    pub fn note<T: Into<ColoredString>>(msg: T, location: Location) -> ErrorMessage {
         ErrorMessage { msg: msg.into(), location, error_type: ErrorType::Note }
     }
 
@@ -180,14 +184,14 @@ fn os_agnostic_display_path(path: &Path) -> ColoredString {
     }
 }
 
-impl<'a> Display for Location<'a> {
+impl Display for Location {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        let filename = os_agnostic_display_path(self.filename);
+        let filename = os_agnostic_display_path(&self.filename);
         write!(f, "{}:{}:{}", filename, self.start.line, self.start.column)
     }
 }
 
-impl<'a> Display for ErrorMessage<'a> {
+impl Display for ErrorMessage {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         let start = self.location.start;
 
@@ -199,7 +203,7 @@ impl<'a> Display for ErrorMessage<'a> {
 
         writeln!(f, "{}\t{} {}", self.location, self.marker(), self.msg)?;
 
-        let file_contents = read_file_or_panic(self.location.filename);
+        let file_contents = read_file_or_panic(&self.location.filename);
         let line = file_contents.lines().nth(max(1, start.line) as usize - 1).unwrap_or("");
 
         let start_column = max(1, start.column) as usize - 1;

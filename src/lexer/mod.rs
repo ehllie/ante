@@ -90,14 +90,14 @@ impl IndentLevel {
     }
 }
 
-impl<'cache, 'contents> Locatable<'cache> for Lexer<'cache, 'contents> {
-    fn locate(&self) -> Location<'cache> {
+impl<'cache, 'contents> Locatable for Lexer<'cache, 'contents> {
+    fn locate(&self) -> Location {
         let end = EndPosition::new(self.current_position.index);
         Location::new(self.filename, self.token_start_position, end)
     }
 }
 
-type IterElem<'a> = Option<(Token, Location<'a>)>;
+type IterElem<'a> = Option<(Token, Location)>;
 
 impl<'cache, 'contents> Lexer<'cache, 'contents> {
     pub fn get_keywords() -> HashMap<&'static str, Token> {
@@ -496,7 +496,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
 }
 
 impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
-    type Item = (Token, Location<'cache>);
+    type Item = (Token, Location);
 
     fn next(&mut self) -> Option<Self::Item> {
         let last_indent = *self.indent_levels.last().unwrap();

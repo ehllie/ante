@@ -45,9 +45,9 @@ pub enum LiteralKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct Literal<'a> {
+pub struct Literal {
     pub kind: LiteralKind,
-    pub location: Location<'a>,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
@@ -60,9 +60,9 @@ pub enum VariableKind {
 
 /// a, b, (+), Some, etc.
 #[derive(Debug, Clone)]
-pub struct Variable<'a> {
+pub struct Variable {
     pub kind: VariableKind,
-    pub location: Location<'a>,
+    pub location: Location,
 
     /// module prefix path
     pub module_prefix: Vec<String>,
@@ -88,8 +88,8 @@ pub struct Variable<'a> {
 
 // TODO: Remove. This is only used for experimenting with ante-lsp
 // which does not refer to the instantiation_mapping field at all.
-unsafe impl<'c> Send for Variable<'c> {}
-unsafe impl<'c> Sync for Variable<'c> {}
+unsafe impl Send for Variable {}
+unsafe impl Sync for Variable {}
 
 /// Maps DefinitionInfoIds closed over in the environment to their new
 /// IDs within the closure which shadow their previous definition.
@@ -112,34 +112,34 @@ pub type ClosureEnvironment = BTreeMap<
 /// \a b. expr
 /// Function definitions are also desugared to a ast::Definition with a ast::Lambda as its body
 #[derive(Debug, Clone)]
-pub struct Lambda<'a> {
-    pub args: Vec<Ast<'a>>,
-    pub body: Box<Ast<'a>>,
-    pub return_type: Option<Type<'a>>,
+pub struct Lambda {
+    pub args: Vec<Ast>,
+    pub body: Box<Ast>,
+    pub return_type: Option<Type>,
 
     pub closure_environment: ClosureEnvironment,
 
     pub required_traits: Vec<RequiredTrait>,
 
-    pub location: Location<'a>,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
 // TODO: Remove. This is only used for experimenting with ante-lsp
 // which does not refer to the instantiation_mapping field at all.
-unsafe impl<'c> Send for Lambda<'c> {}
-unsafe impl<'c> Sync for Lambda<'c> {}
+unsafe impl Send for Lambda {}
+unsafe impl Sync for Lambda {}
 
 /// foo a b c
 #[derive(Debug, Clone)]
-pub struct FunctionCall<'a> {
-    pub function: Box<Ast<'a>>,
-    pub args: Vec<Ast<'a>>,
-    pub location: Location<'a>,
+pub struct FunctionCall {
+    pub function: Box<Ast>,
+    pub args: Vec<Ast>,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
-impl<'a> FunctionCall<'a> {
+impl<'a> FunctionCall {
     pub fn is_pair_constructor(&self) -> bool {
         if let Ast::Variable(variable) = self.function.as_ref() {
             variable.kind == VariableKind::Operator(Token::Comma)
@@ -152,11 +152,11 @@ impl<'a> FunctionCall<'a> {
 /// foo = 23
 /// pattern a b = expr
 #[derive(Debug, Clone)]
-pub struct Definition<'a> {
-    pub pattern: Box<Ast<'a>>,
-    pub expr: Box<Ast<'a>>,
+pub struct Definition {
+    pub pattern: Box<Ast>,
+    pub expr: Box<Ast>,
     pub mutable: bool,
-    pub location: Location<'a>,
+    pub location: Location,
     pub level: Option<LetBindingLevel>,
     pub info: Option<DefinitionInfoId>,
     pub typ: Option<types::Type>,
@@ -164,11 +164,11 @@ pub struct Definition<'a> {
 
 /// if condition then expression else expression
 #[derive(Debug, Clone)]
-pub struct If<'a> {
-    pub condition: Box<Ast<'a>>,
-    pub then: Box<Ast<'a>>,
-    pub otherwise: Box<Ast<'a>>,
-    pub location: Location<'a>,
+pub struct If {
+    pub condition: Box<Ast>,
+    pub then: Box<Ast>,
+    pub otherwise: Box<Ast>,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
@@ -178,15 +178,15 @@ pub struct If<'a> {
 /// ...
 /// | patternN -> branchN
 #[derive(Debug, Clone)]
-pub struct Match<'a> {
-    pub expression: Box<Ast<'a>>,
-    pub branches: Vec<(Ast<'a>, Ast<'a>)>,
+pub struct Match {
+    pub expression: Box<Ast>,
+    pub branches: Vec<(Ast, Ast)>,
 
     /// The decision tree is outputted from the completeness checking
     /// step and is used during codegen to efficiently compile each pattern branch.
     pub decision_tree: Option<DecisionTree>,
 
-    pub location: Location<'a>,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
@@ -194,66 +194,66 @@ pub struct Match<'a> {
 /// PointerType and potentially UserDefinedType are actually type constructors
 #[derive(Debug, Clone)]
 #[allow(clippy::enum_variant_names)]
-pub enum Type<'a> {
+pub enum Type {
     // Optional IntegerKind, None = polymorphic int
-    Integer(Option<IntegerKind>, Location<'a>),
+    Integer(Option<IntegerKind>, Location),
     // Optional FloatKind, None = polymorphic float
-    Float(Option<FloatKind>, Location<'a>),
-    Char(Location<'a>),
-    String(Location<'a>),
-    Pointer(Location<'a>),
-    Boolean(Location<'a>),
-    Unit(Location<'a>),
-    Reference(Location<'a>),
-    Function(Vec<Type<'a>>, Box<Type<'a>>, /*varargs:*/ bool, /*closure*/ bool, Location<'a>),
-    TypeVariable(String, Location<'a>),
-    UserDefined(String, Location<'a>),
-    TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
-    Pair(Box<Type<'a>>, Box<Type<'a>>, Location<'a>),
+    Float(Option<FloatKind>, Location),
+    Char(Location),
+    String(Location),
+    Pointer(Location),
+    Boolean(Location),
+    Unit(Location),
+    Reference(Location),
+    Function(Vec<Type>, Box<Type>, /*varargs:*/ bool, /*closure*/ bool, Location),
+    TypeVariable(String, Location),
+    UserDefined(String, Location),
+    TypeApplication(Box<Type>, Vec<Type>, Location),
+    Pair(Box<Type>, Box<Type>, Location),
 }
 
 /// The AST representation of a trait usage.
 /// A trait's definition would be a TraitDefinition node.
 /// This struct is used in e.g. `given` to list the required traits.
 #[derive(Debug, Clone)]
-pub struct Trait<'a> {
+pub struct Trait {
     pub name: String,
-    pub args: Vec<Type<'a>>,
-    pub location: Location<'a>,
+    pub args: Vec<Type>,
+    pub location: Location,
 }
 
 #[derive(Debug, Clone)]
-pub enum TypeDefinitionBody<'a> {
-    Union(Vec<(String, Vec<Type<'a>>, Location<'a>)>),
-    Struct(Vec<(String, Type<'a>, Location<'a>)>),
-    Alias(Type<'a>),
+pub enum TypeDefinitionBody {
+    Union(Vec<(String, Vec<Type>, Location)>),
+    Struct(Vec<(String, Type, Location)>),
+    Alias(Type),
 }
 
 /// type Name arg1 arg2 ... argN = definition
 #[derive(Debug, Clone)]
-pub struct TypeDefinition<'a> {
+pub struct TypeDefinition {
     pub name: String,
     pub args: Vec<String>,
-    pub definition: TypeDefinitionBody<'a>,
-    pub location: Location<'a>,
+    pub definition: TypeDefinitionBody,
+    pub location: Location,
     pub type_info: Option<TypeInfoId>,
     pub typ: Option<types::Type>,
 }
 
 /// lhs : rhs
 #[derive(Debug, Clone)]
-pub struct TypeAnnotation<'a> {
-    pub lhs: Box<Ast<'a>>,
-    pub rhs: Type<'a>,
-    pub location: Location<'a>,
+pub struct TypeAnnotation {
+    pub lhs: Box<Ast>,
+    pub rhs: Type,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
 /// import Path1 . Path2 ... PathN
 #[derive(Debug, Clone)]
-pub struct Import<'a> {
+pub struct Import {
     pub path: Vec<String>,
-    pub location: Location<'a>,
+    pub location: Location,
     pub typ: Option<types::Type>,
     pub module_id: Option<ModuleId>,
     pub symbols: HashSet<String>,
@@ -265,7 +265,7 @@ pub struct Import<'a> {
 ///     ...
 ///     declarationN
 #[derive(Debug, Clone)]
-pub struct TraitDefinition<'a> {
+pub struct TraitDefinition {
     pub name: String,
     pub args: Vec<String>,
     pub fundeps: Vec<String>,
@@ -274,9 +274,9 @@ pub struct TraitDefinition<'a> {
     // throws away any names given to parameters. In practice
     // this shouldn't matter until refinement types are implemented
     // that can depend upon these names.
-    pub declarations: Vec<TypeAnnotation<'a>>,
+    pub declarations: Vec<TypeAnnotation>,
     pub level: Option<LetBindingLevel>,
-    pub location: Location<'a>,
+    pub location: Location,
     pub trait_info: Option<TraitInfoId>,
     pub typ: Option<types::Type>,
 }
@@ -287,13 +287,13 @@ pub struct TraitDefinition<'a> {
 ///     ...
 ///     definitionN
 #[derive(Debug, Clone)]
-pub struct TraitImpl<'a> {
+pub struct TraitImpl {
     pub trait_name: String,
-    pub trait_args: Vec<Type<'a>>,
-    pub given: Vec<Trait<'a>>,
+    pub trait_args: Vec<Type>,
+    pub given: Vec<Trait>,
 
-    pub definitions: Vec<Definition<'a>>,
-    pub location: Location<'a>,
+    pub definitions: Vec<Definition>,
+    pub location: Location,
     pub trait_info: Option<TraitInfoId>,
     pub impl_id: Option<ImplInfoId>,
     pub typ: Option<types::Type>,
@@ -302,9 +302,9 @@ pub struct TraitImpl<'a> {
 
 /// return expression
 #[derive(Debug, Clone)]
-pub struct Return<'a> {
-    pub expression: Box<Ast<'a>>,
-    pub location: Location<'a>,
+pub struct Return {
+    pub expression: Box<Ast>,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
@@ -313,9 +313,9 @@ pub struct Return<'a> {
 /// ...
 /// statementN
 #[derive(Debug, Clone)]
-pub struct Sequence<'a> {
-    pub statements: Vec<Ast<'a>>,
-    pub location: Location<'a>,
+pub struct Sequence {
+    pub statements: Vec<Ast>,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
@@ -327,19 +327,19 @@ pub struct Sequence<'a> {
 ///     ...
 ///     declarationN
 #[derive(Debug, Clone)]
-pub struct Extern<'a> {
-    pub declarations: Vec<TypeAnnotation<'a>>,
+pub struct Extern {
+    pub declarations: Vec<TypeAnnotation>,
     pub level: Option<LetBindingLevel>,
-    pub location: Location<'a>,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
 /// lhs.field
 #[derive(Debug, Clone)]
-pub struct MemberAccess<'a> {
-    pub lhs: Box<Ast<'a>>,
+pub struct MemberAccess {
+    pub lhs: Box<Ast>,
     pub field: String,
-    pub location: Location<'a>,
+    pub location: Location,
     /// True if this is an offset .& operation
     pub is_offset: bool,
     pub typ: Option<types::Type>,
@@ -347,10 +347,10 @@ pub struct MemberAccess<'a> {
 
 /// lhs := rhs
 #[derive(Debug, Clone)]
-pub struct Assignment<'a> {
-    pub lhs: Box<Ast<'a>>,
-    pub rhs: Box<Ast<'a>>,
-    pub location: Location<'a>,
+pub struct Assignment {
+    pub lhs: Box<Ast>,
+    pub rhs: Box<Ast>,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
@@ -360,13 +360,13 @@ pub struct Assignment<'a> {
 ///     ...
 ///     declarationN
 #[derive(Debug, Clone)]
-pub struct EffectDefinition<'a> {
+pub struct EffectDefinition {
     pub name: String,
     pub args: Vec<String>,
 
-    pub declarations: Vec<TypeAnnotation<'a>>,
+    pub declarations: Vec<TypeAnnotation>,
     pub level: Option<LetBindingLevel>,
-    pub location: Location<'a>,
+    pub location: Location,
     pub effect_info: Option<EffectInfoId>,
     pub typ: Option<types::Type>,
 }
@@ -381,15 +381,15 @@ pub struct EffectDefinition<'a> {
 /// effect or `return`, with any nested patterns
 /// deferring to match expressions.
 #[derive(Debug, Clone)]
-pub struct Handle<'a> {
-    pub expression: Box<Ast<'a>>,
-    pub branches: Vec<(Ast<'a>, Ast<'a>)>,
+pub struct Handle {
+    pub expression: Box<Ast>,
+    pub branches: Vec<(Ast, Ast)>,
 
     /// IDs for each 'resume' variable (1 per branch) of this handle expression.
     /// This is filled out during name resolution.
     pub resumes: Vec<DefinitionInfoId>,
 
-    pub location: Location<'a>,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
@@ -397,39 +397,39 @@ pub struct Handle<'a> {
 ///     field1 = expr1
 ///     field2 = expr2
 #[derive(Debug, Clone)]
-pub struct NamedConstructor<'a> {
-    pub constructor: Box<Ast<'a>>,
-    pub args: Vec<(String, Ast<'a>)>,
+pub struct NamedConstructor {
+    pub constructor: Box<Ast>,
+    pub args: Vec<(String, Ast)>,
 
-    pub location: Location<'a>,
+    pub location: Location,
     pub typ: Option<types::Type>,
 }
 
 #[derive(Debug, Clone)]
-pub enum Ast<'a> {
-    Literal(Literal<'a>),
-    Variable(Variable<'a>),
-    Lambda(Lambda<'a>),
-    FunctionCall(FunctionCall<'a>),
-    Definition(Definition<'a>),
-    If(If<'a>),
-    Match(Match<'a>),
-    TypeDefinition(TypeDefinition<'a>),
-    TypeAnnotation(TypeAnnotation<'a>),
-    Import(Import<'a>),
-    TraitDefinition(TraitDefinition<'a>),
-    TraitImpl(TraitImpl<'a>),
-    Return(Return<'a>),
-    Sequence(Sequence<'a>),
-    Extern(Extern<'a>),
-    MemberAccess(MemberAccess<'a>),
-    Assignment(Assignment<'a>),
-    EffectDefinition(EffectDefinition<'a>),
-    Handle(Handle<'a>),
-    NamedConstructor(NamedConstructor<'a>),
+pub enum Ast {
+    Literal(Literal),
+    Variable(Variable),
+    Lambda(Lambda),
+    FunctionCall(FunctionCall),
+    Definition(Definition),
+    If(If),
+    Match(Match),
+    TypeDefinition(TypeDefinition),
+    TypeAnnotation(TypeAnnotation),
+    Import(Import),
+    TraitDefinition(TraitDefinition),
+    TraitImpl(TraitImpl),
+    Return(Return),
+    Sequence(Sequence),
+    Extern(Extern),
+    MemberAccess(MemberAccess),
+    Assignment(Assignment),
+    EffectDefinition(EffectDefinition),
+    Handle(Handle),
+    NamedConstructor(NamedConstructor),
 }
 
-unsafe impl<'c> Send for Ast<'c> {}
+unsafe impl Send for Ast {}
 
 impl PartialEq for LiteralKind {
     /// Ignoring any type tags, are these literals equal?
@@ -462,7 +462,7 @@ impl std::hash::Hash for LiteralKind {
 }
 
 /// These are all convenience functions for creating various Ast nodes from the parser
-impl<'a> Ast<'a> {
+impl Ast {
     pub fn get_operator(self) -> Option<Token> {
         match self {
             Ast::Variable(variable) => match variable.kind {
@@ -482,35 +482,35 @@ impl<'a> Ast<'a> {
         }
     }
 
-    pub fn integer(x: u64, kind: Option<IntegerKind>, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal { kind: LiteralKind::Integer(x, kind), location, typ: None })
+    pub fn integer(x: u64, kind: Option<IntegerKind>, location: &Location) -> Ast {
+        Ast::Literal(Literal { kind: LiteralKind::Integer(x, kind), location: location.clone(), typ: None })
     }
 
-    pub fn float(x: f64, kind: Option<FloatKind>, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal { kind: LiteralKind::Float(x.to_bits(), kind), location, typ: None })
+    pub fn float(x: f64, kind: Option<FloatKind>, location: &Location) -> Ast {
+        Ast::Literal(Literal { kind: LiteralKind::Float(x.to_bits(), kind), location: location.clone(), typ: None })
     }
 
-    pub fn string(x: String, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal { kind: LiteralKind::String(x), location, typ: None })
+    pub fn string(x: String, location: &Location) -> Ast {
+        Ast::Literal(Literal { kind: LiteralKind::String(x), location: location.clone(), typ: None })
     }
 
-    pub fn char_literal(x: char, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal { kind: LiteralKind::Char(x), location, typ: None })
+    pub fn char_literal(x: char, location: &Location) -> Ast {
+        Ast::Literal(Literal { kind: LiteralKind::Char(x), location: location.clone(), typ: None })
     }
 
-    pub fn bool_literal(x: bool, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal { kind: LiteralKind::Bool(x), location, typ: None })
+    pub fn bool_literal(x: bool, location: &Location) -> Ast {
+        Ast::Literal(Literal { kind: LiteralKind::Bool(x), location: location.clone(), typ: None })
     }
 
-    pub fn unit_literal(location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal { kind: LiteralKind::Unit, location, typ: None })
+    pub fn unit_literal(location: &Location) -> Ast {
+        Ast::Literal(Literal { kind: LiteralKind::Unit, location: location.clone(), typ: None })
     }
 
-    pub fn variable(module_prefix: Vec<String>, name: String, location: Location<'a>) -> Ast<'a> {
+    pub fn variable(module_prefix: Vec<String>, name: String, location: &Location) -> Ast {
         Ast::Variable(Variable {
             kind: VariableKind::Identifier(name),
             module_prefix,
-            location,
+            location: location.clone(),
             definition: None,
             id: None,
             impl_scope: None,
@@ -519,11 +519,11 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn operator(operator: Token, location: Location<'a>) -> Ast<'a> {
+    pub fn operator(operator: Token, location: &Location) -> Ast {
         Ast::Variable(Variable {
             kind: VariableKind::Operator(operator),
             module_prefix: vec![],
-            location,
+            location: location.clone(),
             definition: None,
             id: None,
             impl_scope: None,
@@ -532,10 +532,10 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn type_constructor(module_prefix: Vec<String>, name: String, location: Location<'a>) -> Ast<'a> {
+    pub fn type_constructor(module_prefix: Vec<String>, name: String, location: &Location) -> Ast {
         Ast::Variable(Variable {
             kind: VariableKind::TypeConstructor(name),
-            location,
+            location: location.clone(),
             module_prefix,
             definition: None,
             id: None,
@@ -545,31 +545,31 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    pub fn lambda(args: Vec<Ast>, return_type: Option<Type>, body: Ast, location: &Location) -> Ast {
         assert!(!args.is_empty());
         Ast::Lambda(Lambda {
             args,
             body: Box::new(body),
             closure_environment: BTreeMap::new(),
             return_type,
-            location,
+            location: location.clone(),
             required_traits: vec![],
             typ: None,
         })
     }
 
-    pub fn function_call(function: Ast<'a>, args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+    pub fn function_call(function: Ast, args: Vec<Ast>, location: &Location) -> Ast {
         assert!(!args.is_empty());
-        Ast::FunctionCall(FunctionCall { function: Box::new(function), args, location, typ: None })
+        Ast::FunctionCall(FunctionCall { function: Box::new(function), args, location: location.clone(), typ: None })
     }
 
-    pub fn if_expr(condition: Ast<'a>, then: Ast<'a>, otherwise: Option<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+    pub fn if_expr(condition: Ast, then: Ast, otherwise: Option<Ast>, location: &Location) -> Ast {
         if let Some(otherwise) = otherwise {
             Ast::If(If {
                 condition: Box::new(condition),
                 then: Box::new(then),
                 otherwise: Box::new(otherwise),
-                location,
+                location: location.clone(),
                 typ: None,
             })
         } else {
@@ -577,11 +577,11 @@ impl<'a> Ast<'a> {
         }
     }
 
-    pub fn definition(pattern: Ast<'a>, expr: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    pub fn definition(pattern: Ast, expr: Ast, location: &Location) -> Ast {
         Ast::Definition(Definition {
             pattern: Box::new(pattern),
             expr: Box::new(expr),
-            location,
+            location: location.clone(),
             mutable: false,
             level: None,
             info: None,
@@ -589,7 +589,7 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn match_expr(expression: Ast<'a>, mut branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
+    pub fn match_expr(expression: Ast, mut branches: Vec<(Ast, Ast)>, location: &Location) -> Ast {
         // (Issue #80) When compiling a match statement with a single variable branch e.g:
         // `match ... | x -> ... ` a single Leaf node will be emitted as the decision tree
         // after type checking which causes us to fail since `x` will not be bound to anything
@@ -603,36 +603,48 @@ impl<'a> Ast<'a> {
             // match, but it is an inconsistency that should be fixed.
             Ast::sequence(vec![definition, rest], location)
         } else {
-            Ast::Match(Match { expression: Box::new(expression), branches, decision_tree: None, location, typ: None })
+            Ast::Match(Match {
+                expression: Box::new(expression),
+                branches,
+                decision_tree: None,
+                location: location.clone(),
+                typ: None,
+            })
         }
     }
 
     pub fn type_definition(
-        name: String, args: Vec<String>, definition: TypeDefinitionBody<'a>, location: Location<'a>,
-    ) -> Ast<'a> {
-        Ast::TypeDefinition(TypeDefinition { name, args, definition, location, type_info: None, typ: None })
+        name: String, args: Vec<String>, definition: TypeDefinitionBody, location: &Location,
+    ) -> Ast {
+        Ast::TypeDefinition(TypeDefinition {
+            name,
+            args,
+            definition,
+            location: location.clone(),
+            type_info: None,
+            typ: None,
+        })
     }
 
-    pub fn type_annotation(lhs: Ast<'a>, rhs: Type<'a>, location: Location<'a>) -> Ast<'a> {
-        Ast::TypeAnnotation(TypeAnnotation { lhs: Box::new(lhs), rhs, location, typ: None })
+    pub fn type_annotation(lhs: Ast, rhs: Type, location: &Location) -> Ast {
+        Ast::TypeAnnotation(TypeAnnotation { lhs: Box::new(lhs), rhs, location: location.clone(), typ: None })
     }
 
-    pub fn import(path: Vec<String>, location: Location<'a>, symbols: HashSet<String>) -> Ast<'a> {
+    pub fn import(path: Vec<String>, location: &Location, symbols: HashSet<String>) -> Ast {
         assert!(!path.is_empty());
-        Ast::Import(Import { path, location, typ: None, module_id: None, symbols })
+        Ast::Import(Import { path, location: location.clone(), typ: None, module_id: None, symbols })
     }
 
     pub fn trait_definition(
-        name: String, args: Vec<String>, fundeps: Vec<String>, declarations: Vec<TypeAnnotation<'a>>,
-        location: Location<'a>,
-    ) -> Ast<'a> {
+        name: String, args: Vec<String>, fundeps: Vec<String>, declarations: Vec<TypeAnnotation>, location: &Location,
+    ) -> Ast {
         assert!(!args.is_empty());
         Ast::TraitDefinition(TraitDefinition {
             name,
             args,
             fundeps,
             declarations,
-            location,
+            location: location.clone(),
             level: None,
             trait_info: None,
             typ: None,
@@ -640,16 +652,15 @@ impl<'a> Ast<'a> {
     }
 
     pub fn trait_impl(
-        trait_name: String, trait_args: Vec<Type<'a>>, given: Vec<Trait<'a>>, definitions: Vec<Definition<'a>>,
-        location: Location<'a>,
-    ) -> Ast<'a> {
+        trait_name: String, trait_args: Vec<Type>, given: Vec<Trait>, definitions: Vec<Definition>, location: &Location,
+    ) -> Ast {
         assert!(!trait_args.is_empty());
         Ast::TraitImpl(TraitImpl {
             trait_name,
             trait_args,
             given,
             definitions,
-            location,
+            location: location.clone(),
             trait_arg_types: vec![],
             impl_id: None,
             trait_info: None,
@@ -657,53 +668,64 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn return_expr(expression: Ast<'a>, location: Location<'a>) -> Ast<'a> {
-        Ast::Return(Return { expression: Box::new(expression), location, typ: None })
+    pub fn return_expr(expression: Ast, location: &Location) -> Ast {
+        Ast::Return(Return { expression: Box::new(expression), location: location.clone(), typ: None })
     }
 
-    pub fn sequence(statements: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+    pub fn sequence(statements: Vec<Ast>, location: &Location) -> Ast {
         assert!(!statements.is_empty());
-        Ast::Sequence(Sequence { statements, location, typ: None })
+        Ast::Sequence(Sequence { statements, location: location.clone(), typ: None })
     }
 
-    pub fn extern_expr(declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {
-        Ast::Extern(Extern { declarations, location, level: None, typ: None })
+    pub fn extern_expr(declarations: Vec<TypeAnnotation>, location: &Location) -> Ast {
+        Ast::Extern(Extern { declarations, location: location.clone(), level: None, typ: None })
     }
 
-    pub fn member_access(lhs: Ast<'a>, field: String, is_offset: bool, location: Location<'a>) -> Ast<'a> {
-        Ast::MemberAccess(MemberAccess { lhs: Box::new(lhs), field, is_offset, location, typ: None })
+    pub fn member_access(lhs: Ast, field: String, is_offset: bool, location: &Location) -> Ast {
+        Ast::MemberAccess(MemberAccess { lhs: Box::new(lhs), field, is_offset, location: location.clone(), typ: None })
     }
 
-    pub fn assignment(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
-        Ast::Assignment(Assignment { lhs: Box::new(lhs), rhs: Box::new(rhs), location, typ: None })
+    pub fn assignment(lhs: Ast, rhs: Ast, location: &Location) -> Ast {
+        Ast::Assignment(Assignment { lhs: Box::new(lhs), rhs: Box::new(rhs), location: location.clone(), typ: None })
     }
 
     pub fn effect_definition(
-        name: String, args: Vec<String>, declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>,
-    ) -> Ast<'a> {
+        name: String, args: Vec<String>, declarations: Vec<TypeAnnotation>, location: &Location,
+    ) -> Ast {
         Ast::EffectDefinition(EffectDefinition {
             name,
             args,
             declarations,
-            location,
+            location: location.clone(),
             level: None,
             typ: None,
             effect_info: None,
         })
     }
 
-    pub fn handle(expression: Ast<'a>, branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
+    pub fn handle(expression: Ast, branches: Vec<(Ast, Ast)>, location: &Location) -> Ast {
         let branches = super::desugar::desugar_handle_branches_into_matches(branches);
-        Ast::Handle(Handle { expression: Box::new(expression), branches, location, resumes: vec![], typ: None })
+        Ast::Handle(Handle {
+            expression: Box::new(expression),
+            branches,
+            location: location.clone(),
+            resumes: vec![],
+            typ: None,
+        })
     }
 
-    pub fn named_constructor(constructor: Ast<'a>, args: Vec<(String, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
-        Ast::NamedConstructor(NamedConstructor { constructor: Box::new(constructor), args, location, typ: None })
+    pub fn named_constructor(constructor: Ast, args: Vec<(String, Ast)>, location: &Location) -> Ast {
+        Ast::NamedConstructor(NamedConstructor {
+            constructor: Box::new(constructor),
+            args,
+            location: location.clone(),
+            typ: None,
+        })
     }
 
     /// This is a bit of a hack.
     /// Create a new 'scope' by wrapping body in `match () | () -> body`
-    pub fn new_scope(body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    pub fn new_scope(body: Ast, location: &Location) -> Ast {
         Ast::match_expr(Ast::unit_literal(location), vec![(Ast::unit_literal(location), body)], location)
     }
 }
@@ -738,17 +760,17 @@ macro_rules! dispatch_on_expr {
     });
 }
 
-impl<'a> Locatable<'a> for Ast<'a> {
-    fn locate(&self) -> Location<'a> {
+impl Locatable for Ast {
+    fn locate(&self) -> Location {
         dispatch_on_expr!(self, Locatable::locate)
     }
 }
 
 macro_rules! impl_locatable_for {
     ( $name:tt ) => {
-        impl<'a> Locatable<'a> for $name<'a> {
-            fn locate(&self) -> Location<'a> {
-                self.location
+        impl Locatable for $name {
+            fn locate(&self) -> Location {
+                self.location.clone()
             }
         }
     };
@@ -775,22 +797,22 @@ impl_locatable_for!(EffectDefinition);
 impl_locatable_for!(Handle);
 impl_locatable_for!(NamedConstructor);
 
-impl<'a> Locatable<'a> for Type<'a> {
-    fn locate(&self) -> Location<'a> {
+impl Locatable for Type {
+    fn locate(&self) -> Location {
         match self {
-            Type::Integer(_, location) => *location,
-            Type::Float(_, location) => *location,
-            Type::Char(location) => *location,
-            Type::String(location) => *location,
-            Type::Pointer(location) => *location,
-            Type::Boolean(location) => *location,
-            Type::Unit(location) => *location,
-            Type::Reference(location) => *location,
-            Type::Function(_, _, _, _, location) => *location,
-            Type::TypeVariable(_, location) => *location,
-            Type::UserDefined(_, location) => *location,
-            Type::TypeApplication(_, _, location) => *location,
-            Type::Pair(_, _, location) => *location,
+            Type::Integer(_, location) => location.clone(),
+            Type::Float(_, location) => location.clone(),
+            Type::Char(location) => location.clone(),
+            Type::String(location) => location.clone(),
+            Type::Pointer(location) => location.clone(),
+            Type::Boolean(location) => location.clone(),
+            Type::Unit(location) => location.clone(),
+            Type::Reference(location) => location.clone(),
+            Type::Function(_, _, _, _, location) => location.clone(),
+            Type::TypeVariable(_, location) => location.clone(),
+            Type::UserDefined(_, location) => location.clone(),
+            Type::TypeApplication(_, _, location) => location.clone(),
+            Type::Pair(_, _, location) => location.clone(),
         }
     }
 }

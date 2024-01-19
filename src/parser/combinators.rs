@@ -13,7 +13,7 @@ use crate::error::location::Location;
 use crate::lexer::token::{FloatKind, IntegerKind, Token};
 use crate::parser::error::{ParseError, ParseResult};
 
-pub type Input<'local, 'cache> = &'local [(Token, Location<'cache>)];
+pub type Input<'local, 'cache> = &'local [(Token, Location)];
 
 /// Helper macro for parser!
 macro_rules! seq {
@@ -57,7 +57,7 @@ macro_rules! seq {
     });
     // Finish the seq by wrapping in an Ok
     ( $input:ident $start:ident $end:ident $location:tt => $expr:expr ) => ({
-        let $location = $start.union($end);
+        let $location = $start.union(&$end);
         Ok(($input, $expr, $location))
     });
 }
@@ -83,7 +83,7 @@ macro_rules! parser {
     };
     // Variant with implicit return type of ParseResult<Ast>
     ( $name:ident $location:tt = $($body:tt )* ) => {
-        parser!($name $location -> 'b Ast<'b> = $($body)* );
+        parser!($name $location -> 'b Ast = $($body)* );
     };
 }
 
@@ -110,7 +110,7 @@ where
 
         assert!(!input.is_empty());
 
-        match input[0] {
+        match input[0].clone() {
             (Token::Invalid(err), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(err, location)))),
             (_, location) => Err(ParseError::InRule(rule, location)),
         }
@@ -122,11 +122,11 @@ pub fn expect<'a, 'b: 'a>(expected: Token) -> impl Fn(Input<'a, 'b>) -> ParseRes
     use std::mem::discriminant;
     move |input| {
         if discriminant(&expected) == discriminant(&input[0].0) {
-            Ok((&input[1..], input[0].0.clone(), input[0].1))
+            Ok((&input[1..], input[0].0.clone(), input[0].1.clone()))
         } else if let Token::Invalid(err) = input[0].0 {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(err, input[0].1))))
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(err, input[0].1.clone()))))
         } else {
-            Err(ParseError::Expected(vec![expected.clone()], input[0].1))
+            Err(ParseError::Expected(vec![expected.clone()], input[0].1.clone()))
         }
     }
 }
@@ -138,11 +138,11 @@ where
 {
     move |input| {
         if f(&input[0].0) {
-            Ok((&input[1..], input[0].0.clone(), input[0].1))
+            Ok((&input[1..], input[0].0.clone(), input[0].1.clone()))
         } else if let Token::Invalid(err) = input[0].0 {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(err, input[0].1))))
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(err, input[0].1.clone()))))
         } else {
-            Err(ParseError::InRule(rule, input[0].1))
+            Err(ParseError::InRule(rule, input[0].1.clone()))
         }
     }
 }
@@ -155,7 +155,7 @@ where
     move |input| match f(input) {
         Ok((input, result, loc)) => Ok((input, Some(result), loc)),
         Err(ParseError::Fatal(err)) => Err(ParseError::Fatal(err)),
-        Err(_) => Ok((input, None, input[0].1)),
+        Err(_) => Ok((input, None, input[0].1.clone())),
     }
 }
 
@@ -170,7 +170,7 @@ where
     move |input| {
         let (input, fresult, loc1) = f(input)?;
         let (input, gresult, loc2) = g(input)?;
-        Ok((input, (fresult, gresult), loc1.union(loc2)))
+        Ok((input, (fresult, gresult), loc1.union(&loc2)))
     }
 }
 /// Match f at least once, then match many0(g, f)
@@ -183,7 +183,7 @@ where
 {
     move |mut input| {
         let mut results = Vec::new();
-        let start = input[0].1;
+        let start = &input[0].1;
         let mut end;
 
         match f(input) {
@@ -212,7 +212,7 @@ where
             }
         }
 
-        let location = start.union(end);
+        let location = start.union(&end);
         Ok((input, results, location))
     }
 }
@@ -227,7 +227,7 @@ where
 {
     move |mut input| {
         let mut results = Vec::new();
-        let start = input[0].1;
+        let start = &input[0].1;
         let mut end;
 
         match f(input) {
@@ -262,7 +262,7 @@ where
             }
         }
 
-        let location = start.union(end);
+        let location = start.union(&end);
         Ok((input, results, location))
     }
 }
@@ -298,8 +298,8 @@ where
 {
     move |mut input| {
         let mut results = Vec::new();
-        let start = input[0].1;
-        let mut end = start;
+        let start = &input[0].1;
+        let mut end = start.clone();
 
         loop {
             match f(input) {
@@ -312,7 +312,7 @@ where
                 _ => break,
             }
         }
-        Ok((input, results, start.union(end)))
+        Ok((input, results, start.union(&end)))
     }
 }
 
@@ -324,7 +324,7 @@ where
 {
     move |mut input| {
         let mut results = Vec::new();
-        let start = input[0].1;
+        let start = &input[0].1;
         let mut end;
 
         match f(input) {
@@ -347,7 +347,7 @@ where
                 Err(_) => break,
             }
         }
-        Ok((input, results, start.union(end)))
+        Ok((input, results, start.union(&end)))
     }
 }
 
@@ -368,82 +368,96 @@ where
 // Basic combinators for extracting the contents of a given token
 pub fn imported_item<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
     match &input[0] {
-        (Token::TypeName(name), location) => Ok((&input[1..], name.clone(), *location)),
-        (Token::Identifier(name), location) => Ok((&input[1..], name.clone(), *location)),
-        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::Identifier("imported_item".to_owned())], *location)),
+        (Token::TypeName(name), location) => Ok((&input[1..], name.clone(), location.clone())),
+        (Token::Identifier(name), location) => Ok((&input[1..], name.clone(), location.clone())),
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, location.clone())))),
+        (_, location) => {
+            Err(ParseError::Expected(vec![Token::Identifier("imported_item".to_owned())], location.clone()))
+        },
     }
 }
 
 pub fn identifier<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
     match &input[0] {
-        (Token::StringType, location) => Ok((&input[1..], "String".to_owned(), *location)),
-        (Token::Identifier(name), location) => Ok((&input[1..], name.clone(), *location)),
-        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::Identifier("identifier".to_owned())], *location)),
+        (Token::StringType, location) => Ok((&input[1..], "String".to_owned(), location.clone())),
+        (Token::Identifier(name), location) => Ok((&input[1..], name.clone(), location.clone())),
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, location.clone())))),
+        (_, location) => Err(ParseError::Expected(vec![Token::Identifier("identifier".to_owned())], location.clone())),
     }
 }
 
 pub fn typename<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
     match &input[0] {
-        (Token::TypeName(name), location) => Ok((&input[1..], name.clone(), *location)),
-        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::TypeName("type name".to_owned())], *location)),
+        (Token::TypeName(name), location) => Ok((&input[1..], name.clone(), location.clone())),
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, location.clone())))),
+        (_, location) => Err(ParseError::Expected(vec![Token::TypeName("type name".to_owned())], location.clone())),
     }
 }
 
 pub fn string_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
     match &input[0] {
-        (Token::StringLiteral(contents), location) => Ok((&input[1..], contents.clone(), *location)),
-        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::StringLiteral("".to_owned())], *location)),
+        (Token::StringLiteral(contents), location) => Ok((&input[1..], contents.clone(), location.clone())),
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, location.clone())))),
+        (_, location) => Err(ParseError::Expected(vec![Token::StringLiteral("".to_owned())], location.clone())),
     }
 }
 
 pub fn integer_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (u64, Option<IntegerKind>)> {
-    match input[0] {
-        (Token::IntegerLiteral(int, kind), location) => Ok((&input[1..], (int, kind), location)),
-        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::IntegerLiteral(0, None)], location)),
+    match &input[0] {
+        (Token::IntegerLiteral(int, kind), location) => Ok((&input[1..], (*int, kind.clone()), location.clone())),
+        (Token::Invalid(c), location) => {
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c.clone(), location.clone()))))
+        },
+        (_, location) => Err(ParseError::Expected(vec![Token::IntegerLiteral(0, None)], location.clone())),
     }
 }
 
 pub fn float_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (f64, Option<FloatKind>)> {
-    match input[0] {
-        (Token::FloatLiteral(float, kind), location) => Ok((&input[1..], (float, kind), location)),
-        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::FloatLiteral(0.0, None)], location)),
+    match &input[0] {
+        (Token::FloatLiteral(float, kind), location) => Ok((&input[1..], (*float, kind.clone()), location.clone())),
+        (Token::Invalid(c), location) => {
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c.clone(), location.clone()))))
+        },
+        (_, location) => Err(ParseError::Expected(vec![Token::FloatLiteral(0.0, None)], location.clone())),
     }
 }
 
 pub fn char_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, char> {
-    match input[0] {
-        (Token::CharLiteral(contents), location) => Ok((&input[1..], contents, location)),
-        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::CharLiteral(' ')], location)),
+    match &input[0] {
+        (Token::CharLiteral(contents), location) => Ok((&input[1..], *contents, location.clone())),
+        (Token::Invalid(c), location) => {
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c.clone(), location.clone()))))
+        },
+        (_, location) => Err(ParseError::Expected(vec![Token::CharLiteral(' ')], location.clone())),
     }
 }
 
 pub fn bool_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, bool> {
-    match input[0] {
-        (Token::BooleanLiteral(boolean), location) => Ok((&input[1..], boolean, location)),
-        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location)),
+    match &input[0] {
+        (Token::BooleanLiteral(boolean), location) => Ok((&input[1..], *boolean, location.clone())),
+        (Token::Invalid(c), location) => {
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c.clone(), location.clone()))))
+        },
+        (_, location) => Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location.clone())),
     }
 }
 
 pub fn int_type_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, IntegerKind> {
-    match input[0] {
-        (Token::IntegerType(kind), location) => Ok((&input[1..], kind, location)),
-        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location)),
+    match &input[0] {
+        (Token::IntegerType(kind), location) => Ok((&input[1..], *kind, location.clone())),
+        (Token::Invalid(c), location) => {
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c.clone(), location.clone()))))
+        },
+        (_, location) => Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location.clone())),
     }
 }
 
 pub fn float_type_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, FloatKind> {
-    match input[0] {
-        (Token::FloatType(kind), location) => Ok((&input[1..], kind, location)),
-        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location)),
+    match &input[0] {
+        (Token::FloatType(kind), location) => Ok((&input[1..], *kind, location.clone())),
+        (Token::Invalid(c), location) => {
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c.clone(), location.clone()))))
+        },
+        (_, location) => Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location.clone())),
     }
 }

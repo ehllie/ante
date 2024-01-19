@@ -11,7 +11,7 @@ impl<'c> Context<'c> {
     ///
     /// If the given argument is not a closure this will do nothing
     pub fn fix_recursive_closure_calls(
-        &mut self, expr: Ast, definition: &ast::Definition<'c>, definition_id: hir::DefinitionId,
+        &mut self, expr: Ast, definition: &ast::Definition, definition_id: hir::DefinitionId,
     ) -> Ast {
         match definition.expr.as_ref() {
             ast::Ast::Lambda(lambda) if !lambda.closure_environment.is_empty() => {

@@ -17,13 +17,13 @@ pub type LifetimeVariableId = TypeVariableId;
 // struct StackFrameIndex(usize);
 
 #[allow(unused)]
-pub fn infer<'c>(_ast: &mut Ast<'c>, _cache: &mut ModuleCache<'c>) {}
+pub fn infer<'c>(_ast: &mut Ast, _cache: &mut ModuleCache<'c>) {}
 
 // trait InferableLifetime {
 //     fn infer_lifetime<'c>(&mut self, analyzer: &mut LifetimeAnalyzer, cache: &mut ModuleCache<'c>);
 // }
 //
-// impl<'ast> InferableLifetime for Ast<'ast> {
+// impl<'ast> InferableLifetime for Ast {
 //     fn infer_lifetime<'c>(&mut self, analyzer: &mut LifetimeAnalyzer, cache: &mut ModuleCache<'c>) {
 //         dispatch_on_expr!(self, InferableLifetime::infer_lifetime, analyzer, cache)
 //     }

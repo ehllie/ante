@@ -24,9 +24,9 @@ use super::GeneralizedType;
 
 /// Compiles the given match_expr to a DecisionTree, doing
 /// completeness and redundancy checking in the process.
-pub fn compile<'c>(match_expr: &ast::Match<'c>, cache: &mut ModuleCache<'c>) -> DecisionTree {
-    let mut matrix = PatternMatrix::from_ast(match_expr, cache, match_expr.location);
-    let result = matrix.compile(cache, match_expr.location);
+pub fn compile<'c>(match_expr: &ast::Match, cache: &mut ModuleCache<'c>) -> DecisionTree {
+    let mut matrix = PatternMatrix::from_ast(match_expr, cache, &match_expr.location);
+    let result = matrix.compile(cache, &match_expr.location);
 
     if result.context.reachable_branches.len() != match_expr.branches.len() {
         for (i, (pattern, _branch)) in match_expr.branches.iter().enumerate() {
@@ -37,7 +37,7 @@ pub fn compile<'c>(match_expr: &ast::Match<'c>, cache: &mut ModuleCache<'c>) -> 
     }
 
     if result.context.missed_case_count != 0 {
-        result.issue_inexhaustive_errors(cache, match_expr.location);
+        result.issue_inexhaustive_errors(cache, &match_expr.location);
     }
 
     result.tree
@@ -90,7 +90,7 @@ impl Constructor {
     /// Returns a Vec of len MatchAll Constructors, along with the DefinitionInfoId
     /// of the variable they bind to.
     fn repeat_matchall<'c>(
-        len: usize, fields: &[Vec<DefinitionInfoId>], cache: &mut ModuleCache<'c>, location: Location<'c>,
+        len: usize, fields: &[Vec<DefinitionInfoId>], cache: &mut ModuleCache<'c>, location: &Location,
     ) -> Vec<(Constructor, DefinitionInfoId)> {
         assert_eq!(fields.len(), len);
 
@@ -126,7 +126,7 @@ impl Constructor {
     /// If self is a MatchAll instead, this will generate n MatchAll patterns, again
     /// using the DefinitionInfoIds from field_ids if possible.
     fn take_n_fields<'c>(
-        self, n: usize, field_ids: &mut Vec<Vec<DefinitionInfoId>>, cache: &mut ModuleCache<'c>, location: Location<'c>,
+        self, n: usize, field_ids: &mut Vec<Vec<DefinitionInfoId>>, cache: &mut ModuleCache<'c>, location: &Location,
     ) -> Vec<(Constructor, DefinitionInfoId)> {
         match self {
             MatchAll(_) => Constructor::repeat_matchall(n, field_ids, cache, location),
@@ -168,7 +168,7 @@ impl PatternStack {
     }
 
     /// Converts a given pattern of the match expression into a PatternStack
-    fn from_ast<'c>(ast: &Ast<'c>, cache: &mut ModuleCache<'c>, location: Location<'c>) -> PatternStack {
+    fn from_ast<'c>(ast: &Ast, cache: &mut ModuleCache<'c>, location: &Location) -> PatternStack {
         match ast {
             Ast::Variable(variable) => {
                 use ast::VariableKind::TypeConstructor;
@@ -234,7 +234,7 @@ impl PatternStack {
 
     fn specialize_row<'c>(
         &self, tag: &VariantTag, arity: usize, fields: &mut Vec<Vec<DefinitionInfoId>>, cache: &mut ModuleCache<'c>,
-        location: Location<'c>,
+        location: &Location,
     ) -> Option<Self> {
         match self.head() {
             Some((head, _)) if head.matches(tag) => {
@@ -265,7 +265,7 @@ impl PatternStack {
     }
 }
 
-fn new_pattern_variable<'c>(name: &str, location: Location<'c>, cache: &mut ModuleCache<'c>) -> DefinitionInfoId {
+fn new_pattern_variable<'c>(name: &str, location: &Location, cache: &mut ModuleCache<'c>) -> DefinitionInfoId {
     let id = cache.push_definition(name, location);
     cache.definition_infos[id.0].definition = Some(DefinitionKind::Parameter);
     id
@@ -388,7 +388,7 @@ struct PatternMatrix {
 }
 
 impl PatternMatrix {
-    fn from_ast<'c>(match_expr: &ast::Match<'c>, cache: &mut ModuleCache<'c>, location: Location<'c>) -> PatternMatrix {
+    fn from_ast<'c>(match_expr: &ast::Match, cache: &mut ModuleCache<'c>, location: &Location) -> PatternMatrix {
         let rows = match_expr
             .branches
             .iter()
@@ -417,7 +417,7 @@ impl PatternMatrix {
     ///
     fn specialize<'c>(
         &self, tag: &VariantTag, arity: usize, fields: &mut Vec<Vec<DefinitionInfoId>>, cache: &mut ModuleCache<'c>,
-        location: Location<'c>,
+        location: &Location,
     ) -> Self {
         let mut matrix = PatternMatrix::default();
 
@@ -450,7 +450,7 @@ impl PatternMatrix {
     /// variables used, then compile the resulting matrix into
     /// a decision tree.
     fn default_specialize<'c>(
-        &self, cache: &mut ModuleCache<'c>, location: Location<'c>,
+        &self, cache: &mut ModuleCache<'c>, location: &Location,
     ) -> (DecisionTreeResult, Vec<DefinitionInfoId>) {
         let mut matrix = PatternMatrix::default();
         let mut variables_to_bind = vec![];
@@ -467,7 +467,7 @@ impl PatternMatrix {
 
     /// Generate a Switch branch covering each case of the top pattern on the stack.
     /// Handles exhaustiveness checking for the union internally.
-    fn switch_on_pattern<'c>(&mut self, cache: &mut ModuleCache<'c>, location: Location<'c>) -> DecisionTreeResult {
+    fn switch_on_pattern<'c>(&mut self, cache: &mut ModuleCache<'c>, location: &Location) -> DecisionTreeResult {
         // Generate the set of constructors appearing in the column
         let mut matched_variants: BTreeMap<_, Vec<_>> = BTreeMap::new();
         let mut switching_on = None;
@@ -528,7 +528,7 @@ impl PatternMatrix {
     }
 
     fn swap_column<'c>(
-        &mut self, column: usize, cache: &mut ModuleCache<'c>, location: Location<'c>,
+        &mut self, column: usize, cache: &mut ModuleCache<'c>, location: &Location,
     ) -> DecisionTreeResult {
         for (row, _) in self.rows.iter_mut() {
             row.0.swap(0, column);
@@ -545,7 +545,7 @@ impl PatternMatrix {
     /// This will recurse on all contained PatternStacks, producing a DecisionTreeResult
     /// which contains the resulting DecisionTree in addition to information on any patterns
     /// that were unreachable or if the match was inexhaustive.
-    fn compile<'c>(&mut self, cache: &mut ModuleCache<'c>, location: Location<'c>) -> DecisionTreeResult {
+    fn compile<'c>(&mut self, cache: &mut ModuleCache<'c>, location: &Location) -> DecisionTreeResult {
         if self.rows.is_empty() {
             // We have an in-exhaustive case expression
             DecisionTreeResult::fail()
@@ -618,7 +618,7 @@ impl DecisionTreeResult {
         DecisionTreeResult::new(DecisionTree::Leaf(branch), context)
     }
 
-    fn issue_inexhaustive_errors<'c>(&self, cache: &ModuleCache<'c>, location: Location<'c>) {
+    fn issue_inexhaustive_errors<'c>(&self, cache: &ModuleCache<'c>, location: &Location) {
         let mut bindings = BTreeMap::new();
         DecisionTreeResult::issue_inexhaustive_errors_helper(&self.tree, None, &mut bindings, cache, location);
     }
@@ -627,7 +627,7 @@ impl DecisionTreeResult {
     /// When this hits a Fail node, the reconstructed piece of data will be a missing case.
     fn issue_inexhaustive_errors_helper<'c>(
         tree: &DecisionTree, starting_id: Option<DefinitionInfoId>, bindings: &mut DebugMatchBindings,
-        cache: &ModuleCache<'c>, location: Location<'c>,
+        cache: &ModuleCache<'c>, location: &Location,
     ) {
         use DecisionTree::*;
         match tree {
@@ -664,12 +664,12 @@ impl DecisionTreeResult {
     }
 
     fn issue_inexhaustive_error(
-        starting_id: Option<DefinitionInfoId>, bindings: &DebugMatchBindings, location: Location,
+        starting_id: Option<DefinitionInfoId>, bindings: &DebugMatchBindings, location: &Location,
     ) {
         let case =
             starting_id.map_or("_".to_string(), |id| DecisionTreeResult::construct_missing_case_string(id, bindings));
 
-        error!(location, "Missing case {}", case);
+        error!(location.clone(), "Missing case {}", case);
     }
 
     /// Construct the string representation of the data defined by the starting DefinitionInfoId
@@ -809,7 +809,7 @@ impl DecisionTree {
     /// Fill in the types of any DefinitionInfoIds created while compiling the decision
     /// tree. This need not be a separate step, but is done here to simplify initial
     /// creation of the tree.
-    pub fn infer<'c>(&mut self, typ: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>) {
+    pub fn infer<'c>(&mut self, typ: &Type, location: &Location, cache: &mut ModuleCache<'c>) {
         match self {
             DecisionTree::Leaf(_) => (),
             DecisionTree::Fail => (),
@@ -820,7 +820,7 @@ impl DecisionTree {
         }
     }
 
-    fn infer_impl<'c>(&mut self, location: Location<'c>, cache: &mut ModuleCache<'c>) {
+    fn infer_impl<'c>(&mut self, location: &Location, cache: &mut ModuleCache<'c>) {
         match self {
             DecisionTree::Leaf(_) => (),
             DecisionTree::Fail => (),
@@ -862,7 +862,7 @@ impl DecisionTree {
     }
 }
 
-fn set_type<'c>(id: DefinitionInfoId, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>) {
+fn set_type<'c>(id: DefinitionInfoId, expected: &Type, location: &Location, cache: &mut ModuleCache<'c>) {
     let definition = &mut cache.definition_infos[id.0];
     match &definition.typ {
         Some(definition_type) => {
@@ -888,9 +888,7 @@ fn set_type<'c>(id: DefinitionInfoId, expected: &Type, location: Location<'c>, c
 /// Since this is only useful for type inference of arguments, if the constructor is
 /// not a function type like (Some : a -> Maybe a) (and thus has no arguments like None : Maybe a)
 /// then we can skip this step completely.
-fn unify_constructor_type<'c>(
-    constructor: &Type, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>,
-) {
+fn unify_constructor_type<'c>(constructor: &Type, expected: &Type, location: &Location, cache: &mut ModuleCache<'c>) {
     // If it is not a function, there are no arguments, so there's no need to unify the type with
     // the expected type. We could unify to assert they're equal but this would incur a runtime cost.
     if let Type::Function(function) = constructor {

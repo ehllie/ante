@@ -58,7 +58,7 @@ impl Scope {
     /// symbols are exported are determined in the "declare" pass. This is because since
     /// the other Scope's symbols are mutably added to self, they cannot be easily distinguished
     /// from definitions originating in this scope.
-    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
+    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: &Location, symbols: &HashSet<String>) {
         self.import_definitions_types_and_traits(other, cache, location, symbols);
         self.import_impls(other, cache);
     }
@@ -78,7 +78,7 @@ impl Scope {
     }
 
     fn import_definitions_types_and_traits(
-        &mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>,
+        &mut self, other: &Scope, cache: &mut ModuleCache, location: &Location, symbols: &HashSet<String>,
     ) {
         macro_rules! merge_table {
             ( $field:tt , $cache_field:tt , $errors:tt ) => {{
@@ -89,7 +89,7 @@ impl Scope {
 
                     if let Some(existing) = self.$field.get(k) {
                         let prev_loc = cache.$cache_field[existing.0].locate();
-                        let error = make_error!(location, "import shadows previous definition of {}", k);
+                        let error = make_error!(location.clone(), "import shadows previous definition of {}", k);
                         let note = make_note!(prev_loc, "{} was previously defined here", k);
                         $errors.push((error, note));
                     } else {
@@ -124,7 +124,7 @@ impl Scope {
                 let definition = &cache.definition_infos[id.0];
                 if definition.uses == 0 && !definition.ignore_unused_warning {
                     warnings.push(make_warning!(
-                        definition.location,
+                        definition.location.clone(),
                         "{} is unused (prefix name with _ to silence this warning)",
                         name
                     ));
@@ -136,7 +136,7 @@ impl Scope {
             let definition = &cache.type_infos[id.0];
             if definition.uses == 0 && !definition.name.starts_with('_') {
                 warnings.push(make_warning!(
-                    definition.location,
+                    definition.location.clone(),
                     "{} is unused (prefix name with _ to silence this warning)",
                     name
                 ));
@@ -184,7 +184,7 @@ impl TypeVariableScope {
 
 #[derive(Debug)]
 pub struct FunctionScopes {
-    pub function: Option<*mut ast::Lambda<'static>>,
+    pub function: Option<*mut ast::Lambda>,
     pub function_id: Option<DefinitionInfoId>,
     pub scopes: Vec<Scope>,
 }
@@ -227,7 +227,7 @@ impl FunctionScopes {
     /// that is part of the closure's environment. This mapping is remembered for codegen
     /// so we can store the existing variable along with the closure as part of its environment.
     pub fn add_closure_environment_variable_mapping<'c>(
-        &mut self, existing: DefinitionInfoId, parameter: DefinitionInfoId, location: Location<'c>,
+        &mut self, existing: DefinitionInfoId, parameter: DefinitionInfoId, location: &Location,
         cache: &mut ModuleCache<'c>,
     ) {
         let function =

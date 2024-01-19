@@ -31,11 +31,11 @@ use ast::{Ast, Trait, Type, TypeDefinitionBody};
 use combinators::*;
 use error::{ParseError, ParseResult};
 
-type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
+type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast>;
 
 /// The entry point to parsing. Parses an entire file, printing any
 /// error found, or returns the Ast if there was no error.
-pub fn parse<'b>(input: Input<'_, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
+pub fn parse<'b>(input: Input<'_, 'b>) -> Result<Ast, ParseError> {
     let result = parse_file(input);
     if let Err(error) = &result {
         eprintln!("{}", error);
@@ -44,7 +44,7 @@ pub fn parse<'b>(input: Input<'_, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
 }
 
 /// A file is a sequence of statements, separated by newlines.
-pub fn parse_file<'b>(input: Input<'_, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
+pub fn parse_file<'b>(input: Input<'_, 'b>) -> Result<Ast, ParseError> {
     let (input, _, _) = maybe_newline(input)?;
     let (input, ast, _) = statement_list(input)?;
     let (input, _, _) = maybe_newline(input)?;
@@ -67,7 +67,7 @@ parser!(statement_list loc =
         for (_, b) in rest.into_iter() {
             statements.push(b);
         }
-        Ast::sequence(statements, loc)
+        Ast::sequence(statements, &loc)
     }
 );
 
@@ -89,11 +89,11 @@ fn definition<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     raw_definition(input).map(|(input, definition, location)| (input, Ast::Definition(definition), location))
 }
 
-fn raw_definition<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::Definition<'b>> {
+fn raw_definition<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::Definition> {
     or(&[function_definition, variable_definition], "definition")(input)
 }
 
-parser!(function_definition location -> 'b ast::Definition<'b> =
+parser!(function_definition location -> 'b ast::Definition =
     name <- pattern_argument;
     args <- many1(pattern_argument);
     return_type <- maybe(function_return_type);
@@ -101,9 +101,9 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     body !<- block_or_statement;
     ast::Definition {
         pattern: Box::new(name),
-        expr: Box::new(Ast::lambda(args, return_type, body, location)),
+        expr: Box::new(Ast::lambda(args, return_type, body, &location)),
         mutable: false,
-        location,
+        location: location.clone(),
         level: None,
         info: None,
         typ: None,
@@ -116,13 +116,13 @@ parser!(varargs location -> 'b () =
     ()
 );
 
-parser!(function_return_type location -> 'b ast::Type<'b> =
+parser!(function_return_type location -> 'b ast::Type =
     _ <- expect(Token::Colon);
     typ <- parse_type;
     typ
 );
 
-parser!(variable_definition location -> 'b ast::Definition<'b> =
+parser!(variable_definition location -> 'b ast::Definition =
     name <- pattern;
     _ <- expect(Token::Equal);
     mutable <- maybe(expect(Token::Mut));
@@ -131,7 +131,7 @@ parser!(variable_definition location -> 'b ast::Definition<'b> =
         pattern: Box::new(name),
         expr: Box::new(expr),
         mutable: mutable.is_some(),
-        location,
+        location: location.clone(),
         level: None,
         info: None,
         typ: None,
@@ -142,7 +142,7 @@ parser!(assignment location =
     lhs <- expression;
     _ <- expect(Token::Assignment);
     rhs !<- expression;
-    Ast::assignment(lhs, rhs, location)
+    Ast::assignment(lhs, rhs, &location)
 );
 
 fn pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
@@ -155,14 +155,14 @@ parser!(pattern_pair loc =
     first <- or(&[type_annotation_pattern, pattern_function_call, pattern_argument], "pattern");
     _ <- expect(Token::Comma);
     rest !<- pattern;
-    Ast::function_call(Ast::operator(Token::Comma, loc), vec![first, rest], loc)
+    Ast::function_call(Ast::operator(Token::Comma, &loc), vec![first, rest], &loc)
 );
 
 parser!(type_annotation_pattern loc =
     lhs <- or(&[pattern_function_call, pattern_argument], "pattern");
     _ <- expect(Token::Colon);
     rhs !<- parse_type;
-    Ast::type_annotation(lhs, rhs, loc)
+    Ast::type_annotation(lhs, rhs, &loc)
 );
 
 fn parenthesized_irrefutable_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
@@ -175,7 +175,7 @@ parser!(type_definition loc =
     args <- many0(identifier);
     _ <- expect(Token::Equal);
     body !<- type_definition_body;
-    Ast::type_definition(name, args, body, loc)
+    Ast::type_definition(name, args, body, &loc)
 );
 
 parser!(type_alias loc =
@@ -184,10 +184,10 @@ parser!(type_alias loc =
     args <- many0(identifier);
     _ <- expect(Token::Is);
     body !<- parse_type;
-    Ast::type_definition(name, args, TypeDefinitionBody::Alias(body), loc)
+    Ast::type_definition(name, args, TypeDefinitionBody::Alias(body), &loc)
 );
 
-fn type_definition_body<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::TypeDefinitionBody<'b>> {
+fn type_definition_body<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::TypeDefinitionBody> {
     match input[0].0 {
         Token::Indent => or(&[union_block_body, struct_block_body], "type_definition_body")(input),
         Token::Pipe => union_inline_body(input),
@@ -195,40 +195,40 @@ fn type_definition_body<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast
     }
 }
 
-parser!(union_variant loc -> 'b (String, Vec<Type<'b>>, Location<'b>) =
+parser!(union_variant loc -> 'b (String, Vec<Type>, Location) =
     _ <- expect(Token::Pipe);
     variant !<- typename;
     args !<- many0(basic_type);
-    (variant, args, loc)
+    (variant, args, loc.clone())
 );
 
-parser!(union_block_body _loc -> 'b ast::TypeDefinitionBody<'b> =
+parser!(union_block_body _loc -> 'b ast::TypeDefinitionBody =
     _ <- expect(Token::Indent);
     variants <- delimited_trailing(union_variant, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
     TypeDefinitionBody::Union(variants)
 );
 
-parser!(union_inline_body _loc -> 'b ast::TypeDefinitionBody<'b> =
+parser!(union_inline_body _loc -> 'b ast::TypeDefinitionBody =
     variants <- many1(union_variant);
     TypeDefinitionBody::Union(variants)
 );
 
-parser!(struct_field loc -> 'b (String, Type<'b>, Location<'b>) =
+parser!(struct_field loc -> 'b (String, Type, Location) =
     field_name <- identifier;
     _ !<- expect(Token::Colon);
     field_type !<- parse_type_no_pair;
-    (field_name, field_type, loc)
+    (field_name, field_type, loc.clone())
 );
 
-parser!(struct_block_body _loc -> 'b ast::TypeDefinitionBody<'b> =
+parser!(struct_block_body _loc -> 'b ast::TypeDefinitionBody =
     _ <- expect(Token::Indent);
     fields <- delimited_trailing(struct_field, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
     TypeDefinitionBody::Struct(fields)
 );
 
-parser!(struct_inline_body _loc -> 'b ast::TypeDefinitionBody<'b> =
+parser!(struct_inline_body _loc -> 'b ast::TypeDefinitionBody =
     fields <- delimited(struct_field, expect(Token::Comma));
     TypeDefinitionBody::Struct(fields)
 );
@@ -237,7 +237,7 @@ parser!(import loc =
     _ <- expect(Token::Import);
     path !<- delimited_trailing(typename, expect(Token::MemberAccess), false);
     symbols !<- many0(imported_item);
-    Ast::import(path, loc, HashSet::from_iter(symbols))
+    Ast::import(path, &loc, HashSet::from_iter(symbols))
 );
 
 parser!(trait_definition loc =
@@ -247,10 +247,10 @@ parser!(trait_definition loc =
     _ !<- maybe(expect(Token::RightArrow));
     fundeps !<- many0(identifier);
     body <- maybe(trait_body);
-    Ast::trait_definition(name, args, fundeps, body.unwrap_or_default(), loc)
+    Ast::trait_definition(name, args, fundeps, body.unwrap_or_default(), &loc)
 );
 
-parser!(trait_body loc -> 'b Vec<ast::TypeAnnotation<'b>> =
+parser!(trait_body loc -> 'b Vec<ast::TypeAnnotation> =
     _ <- expect(Token::With);
     body <- or(&[trait_body_block, trait_body_single], "trait body");
     body
@@ -261,26 +261,26 @@ parser!(effect_definition loc =
     name !<- typename;
     args !<- many0(identifier);
     body <- trait_body;
-    Ast::effect_definition(name, args, body, loc)
+    Ast::effect_definition(name, args, body, &loc)
 );
 
-parser!(trait_body_single loc -> 'b Vec<ast::TypeAnnotation<'b>> =
+parser!(trait_body_single loc -> 'b Vec<ast::TypeAnnotation> =
     body <- declaration;
     vec![body]
 );
 
-parser!(trait_body_block loc -> 'b Vec<ast::TypeAnnotation<'b>> =
+parser!(trait_body_block loc -> 'b Vec<ast::TypeAnnotation> =
     _ <- expect(Token::Indent);
     body !<- delimited_trailing(declaration, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
     body
 );
 
-parser!(declaration loc -> 'b ast::TypeAnnotation<'b> =
+parser!(declaration loc -> 'b ast::TypeAnnotation =
     lhs <- pattern_argument;
     _ <- expect(Token::Colon);
     rhs !<- parse_type;
-    ast::TypeAnnotation { lhs: Box::new(lhs), rhs, location: loc, typ: None }
+    ast::TypeAnnotation { lhs: Box::new(lhs), rhs, location: loc.clone(), typ: None }
 );
 
 parser!(trait_impl loc =
@@ -289,60 +289,60 @@ parser!(trait_impl loc =
     args !<- many1(basic_type);
     given !<- maybe(given);
     definitions !<- maybe(impl_body);
-    Ast::trait_impl(name, args, given.unwrap_or_default(), definitions.unwrap_or_default(), loc)
+    Ast::trait_impl(name, args, given.unwrap_or_default(), definitions.unwrap_or_default(), &loc)
 );
 
-parser!(impl_body loc -> 'b Vec<ast::Definition<'b>> =
+parser!(impl_body loc -> 'b Vec<ast::Definition> =
     _ <- maybe(expect(Token::Newline));
     _ <- expect(Token::With);
     definitions <- or(&[impl_body_block, impl_body_single], "impl body");
     definitions
 );
 
-parser!(impl_body_single loc -> 'b Vec<ast::Definition<'b>> =
+parser!(impl_body_single loc -> 'b Vec<ast::Definition> =
     definition <- raw_definition;
     vec![definition]
 );
 
-parser!(impl_body_block loc -> 'b Vec<ast::Definition<'b>> =
+parser!(impl_body_block loc -> 'b Vec<ast::Definition> =
     _ <- expect(Token::Indent);
     definitions !<- delimited_trailing(raw_definition, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
     definitions
 );
 
-parser!(given loc -> 'b Vec<Trait<'b>> =
+parser!(given loc -> 'b Vec<Trait> =
     _ <- expect(Token::Given);
     traits <- delimited(required_trait, expect(Token::Comma));
     traits
 );
 
-parser!(required_trait location -> 'b Trait<'b> =
+parser!(required_trait location -> 'b Trait =
     name <- typename;
     args <- many1(basic_type);
-    Trait { name, args, location }
+    Trait { name, args, location: location.clone() }
 );
 
 parser!(return_expr loc =
     _ <- expect(Token::Return);
     expr !<- expression;
-    Ast::return_expr(expr, loc)
+    Ast::return_expr(expr, &loc)
 );
 
 parser!(parse_extern loc =
     _ <- expect(Token::Extern);
     declarations <- or(&[extern_block, extern_single], "extern");
-    Ast::extern_expr(declarations, loc)
+    Ast::extern_expr(declarations, &loc)
 );
 
-parser!(extern_block _loc -> 'b Vec<ast::TypeAnnotation<'b>> =
+parser!(extern_block _loc -> 'b Vec<ast::TypeAnnotation> =
     _ <- expect(Token::Indent);
     declarations !<- delimited_trailing(declaration, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
     declarations
 );
 
-parser!(extern_single _loc -> 'b Vec<ast::TypeAnnotation<'b>> =
+parser!(extern_single _loc -> 'b Vec<ast::TypeAnnotation> =
     declaration <- declaration;
     vec![declaration]
 );
@@ -400,12 +400,12 @@ fn should_continue(operator_on_stack: &Token, r_prec: i8, r_is_right_assoc: bool
     l_prec > r_prec || (l_prec == r_prec && !r_is_right_assoc)
 }
 
-fn pop_operator<'c>(operator_stack: &mut Vec<&Token>, results: &mut Vec<(Ast<'c>, Location<'c>)>) {
+fn pop_operator<'c>(operator_stack: &mut Vec<&Token>, results: &mut Vec<(Ast, Location)>) {
     let (rhs, rhs_location) = results.pop().unwrap();
     let (lhs, lhs_location) = results.pop().unwrap();
-    let location = lhs_location.union(rhs_location);
+    let location = lhs_location.union(&rhs_location);
     let operator = operator_stack.pop().unwrap().clone();
-    let call = desugar::desugar_operators(operator, lhs, rhs, location);
+    let call = desugar::desugar_operators(operator, lhs, rhs, &location);
     results.push((call, location));
 }
 
@@ -456,17 +456,17 @@ fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 parser!(function_call loc =
     function <- member_access;
     args <- many1(function_argument);
-    desugar::desugar_explicit_currying(function, args, Ast::function_call, loc)
+    desugar::desugar_explicit_currying(function, args, Ast::function_call, &loc)
 );
 
 parser!(named_constructor_expr loc =
     constructor <- variant;
     _ <- expect(Token::With);
     args !<- named_constructor_args;
-    Ast::named_constructor(constructor, args, loc)
+    Ast::named_constructor(constructor, args, &loc)
 );
 
-fn named_constructor_args<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<(String, Ast<'b>)>> {
+fn named_constructor_args<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<(String, Ast)>> {
     if let Token::Indent = input[0].0 {
         named_constructor_block_args(input)
     } else {
@@ -474,30 +474,30 @@ fn named_constructor_args<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, V
     }
 }
 
-parser!(named_constructor_block_args loc -> 'b Vec<(String, Ast<'b>)> =
+parser!(named_constructor_block_args loc -> 'b Vec<(String, Ast)> =
     _ <- expect(Token::Indent);
     args <- delimited_trailing(named_constructor_arg, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
     args
 );
 
-parser!(named_constructor_inline_args loc -> 'b Vec<(String, Ast<'b>)> =
+parser!(named_constructor_inline_args loc -> 'b Vec<(String, Ast)> =
     args <- delimited(named_constructor_arg, expect(Token::Comma));
     args
 );
 
-fn named_constructor_arg<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (String, Ast<'b>)> {
+fn named_constructor_arg<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (String, Ast)> {
     let (input, ident, start) = identifier(input)?;
     let (input, maybe_expr, end) = maybe(pair(expect(Token::Equal), function_argument))(input)?;
     // Desugar bar, baz into bar = bar, baz = baz
-    let expr = maybe_expr.map_or_else(|| Ast::variable(vec![], ident.clone(), start), |(_, expr)| expr);
-    Ok((input, (ident, expr), start.union(end)))
+    let expr = maybe_expr.map_or_else(|| Ast::variable(vec![], ident.clone(), &start), |(_, expr)| expr);
+    Ok((input, (ident, expr), start.union(&end)))
 }
 
 parser!(pattern_function_call loc =
     function <- pattern_function_argument;
     args <- many1(pattern_function_argument);
-    Ast::function_call(function, args, loc)
+    Ast::function_call(function, args, &loc)
 );
 
 parser!(if_expr loc =
@@ -507,14 +507,14 @@ parser!(if_expr loc =
     _ !<- expect(Token::Then);
     then !<- block_or_statement;
     otherwise !<- maybe(else_expr);
-    Ast::if_expr(condition, then, otherwise, loc)
+    Ast::if_expr(condition, then, otherwise, &loc)
 );
 
 parser!(match_expr loc =
     _ <- expect(Token::Match);
     expression !<- block_or_statement;
     branches !<- many0(match_branch);
-    Ast::match_expr(expression, branches, loc)
+    Ast::match_expr(expression, branches, &loc)
 );
 
 parser!(loop_expr loc =
@@ -522,19 +522,19 @@ parser!(loop_expr loc =
     args !<- many1(loop_param);
     _ !<- expect(Token::RightArrow);
     body !<- block_or_statement;
-    desugar::desugar_loop(args, body, loc)
+    desugar::desugar_loop(args, body, &loc)
 );
 
-fn loop_param<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast<'b>, Ast<'b>)> {
+fn loop_param<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast, Ast)> {
     or(&[loop_param_shorthand, loop_param_longform], "loop parameter")(input)
 }
 
-parser!(loop_param_shorthand loc -> 'b (Ast<'b>, Ast<'b>) =
+parser!(loop_param_shorthand loc -> 'b (Ast, Ast) =
     arg <- pattern_argument;
     (arg.clone(), arg)
 );
 
-parser!(loop_param_longform loc -> 'b (Ast<'b>, Ast<'b>) =
+parser!(loop_param_longform loc -> 'b (Ast, Ast) =
     _ <- expect(Token::ParenthesisLeft);
     parameter !<- pattern;
     _ !<- expect(Token::Equal);
@@ -547,10 +547,10 @@ parser!(handle_expr loc =
     _ <- expect(Token::Handle);
     expression !<- block_or_statement;
     branches !<- many1(handle_branch);
-    Ast::handle(expression, branches, loc)
+    Ast::handle(expression, branches, &loc)
 );
 
-parser!(handle_branch _loc -> 'b (Ast<'b>, Ast<'b>) =
+parser!(handle_branch _loc -> 'b (Ast, Ast) =
     _ <- maybe_newline;
     _ <- expect(Token::Pipe);
     pattern !<- handle_pattern;
@@ -567,41 +567,41 @@ fn handle_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 parser!(not_expr loc =
     not <- expect(Token::Not);
     expr !<- term;
-    Ast::function_call(Ast::operator(not, loc), vec![expr], loc)
+    Ast::function_call(Ast::operator(not, &loc), vec![expr], &loc)
 );
 
 parser!(ref_expr loc =
     token <- expect(Token::Ampersand);
     expr !<- term;
-    Ast::function_call(Ast::operator(token, loc), vec![expr], loc)
+    Ast::function_call(Ast::operator(token, &loc), vec![expr], &loc)
 );
 
 parser!(at_expr loc =
     token <- expect(Token::At);
     expr !<- term;
-    Ast::function_call(Ast::operator(token, loc), vec![expr], loc)
+    Ast::function_call(Ast::operator(token, &loc), vec![expr], &loc)
 );
 
 parser!(type_annotation loc =
     lhs <- or(&[function_call, function_argument], "term");
     _ <- expect(Token::Colon);
     rhs <- parse_type;
-    Ast::type_annotation(lhs, rhs, loc)
+    Ast::type_annotation(lhs, rhs, &loc)
 );
 
-fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
+fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type> {
     or(&[function_type, pair_type, type_application, basic_type], "type")(input)
 }
 
-fn function_arg_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
+fn function_arg_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type> {
     or(&[type_application, pair_type, basic_type], "type")(input)
 }
 
-fn parse_type_no_pair<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
+fn parse_type_no_pair<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type> {
     or(&[function_type, type_application, basic_type], "type")(input)
 }
 
-fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
+fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type> {
     match input[0].0 {
         Token::IntegerType(_) => int_type(input),
         Token::FloatType(_) => float_type(input),
@@ -616,15 +616,15 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
         Token::Identifier(_) => type_variable(input),
         Token::TypeName(_) => user_defined_type(input),
         Token::ParenthesisLeft => parenthesized_type(input),
-        _ => Err(ParseError::InRule("type", input[0].1)),
+        _ => Err(ParseError::InRule("type", input[0].1.clone())),
     }
 }
 
-fn parenthesized_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
+fn parenthesized_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type> {
     parenthesized(parse_type)(input)
 }
 
-parser!(match_branch _loc -> 'b (Ast<'b>, Ast<'b>) =
+parser!(match_branch _loc -> 'b (Ast, Ast) =
     _ <- maybe_newline;
     _ <- expect(Token::Pipe);
     pattern !<- pattern;
@@ -669,8 +669,8 @@ fn member_access<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 
         let (new_input, field, field_location) = no_backtracking(identifier)(input)?;
         input = new_input;
-        location = location.union(field_location);
-        arg = Ast::member_access(arg, field, is_reference, location);
+        location = location.union(&field_location);
+        arg = Ast::member_access(arg, field, is_reference, &location);
     }
 
     Ok((input, arg, location))
@@ -689,7 +689,7 @@ fn argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::UnitLiteral => unit(input),
         Token::Fn => lambda(input),
         Token::ParenthesisLeft => parenthesized_expression(input),
-        _ => Err(ParseError::InRule("argument", input[0].1)),
+        _ => Err(ParseError::InRule("argument", input[0].1.clone())),
     }
 }
 
@@ -704,7 +704,7 @@ fn pattern_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::UnitLiteral => unit(input),
         Token::ParenthesisLeft => parenthesized_irrefutable_pattern(input),
         Token::TypeName(_) => variant(input),
-        _ => Err(ParseError::InRule("pattern argument", input[0].1)),
+        _ => Err(ParseError::InRule("pattern argument", input[0].1.clone())),
     }
 }
 
@@ -714,12 +714,12 @@ parser!(lambda loc =
     return_type <- maybe(function_return_type);
     _ !<- expect(Token::RightArrow);
     body !<- block_or_statement;
-    Ast::lambda(args, return_type, body, loc)
+    Ast::lambda(args, return_type, body, &loc)
 );
 
 parser!(operator loc =
     op <- expect_if("operator", |op| op.is_overloadable_operator());
-    Ast::operator(op, loc)
+    Ast::operator(op, &loc)
 );
 
 fn parenthesized_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
@@ -730,19 +730,19 @@ parser!(variant loc =
     mut module_prefix <- delimited(typename, expect(Token::MemberAccess));
     {
         let name = module_prefix.pop().unwrap();
-        Ast::type_constructor(module_prefix, name, loc)
+        Ast::type_constructor(module_prefix, name, &loc)
     }
 );
 
 parser!(variable loc =
     module_prefix <- maybe(delimited_trailing(typename, expect(Token::MemberAccess), true));
     name <- identifier;
-    Ast::variable(module_prefix.unwrap_or_default(), name, loc)
+    Ast::variable(module_prefix.unwrap_or_default(), name, &loc)
 );
 
 parser!(string_literal loc =
     contents <- string_literal_token;
-    Ast::string(contents, loc)
+    Ast::string(contents, &loc)
 );
 
 fn interpolated_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
@@ -752,126 +752,126 @@ fn interpolated_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 parser!(interpolation loc =
     lhs <- interpolated_expression;
     rhs <- string_literal;
-    desugar::interpolate(lhs, rhs, loc)
+    desugar::interpolate(lhs, rhs, &loc)
 );
 
 parser!(string loc =
     head <- string_literal;
     tail <- many0(interpolation);
-    desugar::concatenate_strings(head, tail, loc)
+    desugar::concatenate_strings(head, tail, &loc)
 );
 
 parser!(integer loc =
     (value, kind) <- integer_literal_token;
-    Ast::integer(value, kind, loc)
+    Ast::integer(value, kind, &loc)
 );
 
 parser!(float loc =
     (value, kind) <- float_literal_token;
-    Ast::float(value, kind, loc)
+    Ast::float(value, kind, &loc)
 );
 
 parser!(parse_char loc =
     contents <- char_literal_token;
-    Ast::char_literal(contents, loc)
+    Ast::char_literal(contents, &loc)
 );
 
 parser!(parse_bool loc =
     value <- bool_literal_token;
-    Ast::bool_literal(value, loc)
+    Ast::bool_literal(value, &loc)
 );
 
 parser!(unit loc =
     _ <- expect(Token::UnitLiteral);
-    Ast::unit_literal(loc)
+    Ast::unit_literal(&loc)
 );
 
-parser!(function_type loc -> 'b Type<'b> =
+parser!(function_type loc -> 'b Type =
     args <- delimited_trailing(function_arg_type, expect(Token::Subtract), false);
     varargs <- maybe(varargs);
     is_closure <- function_arrow;
     return_type <- parse_type;
-    Type::Function(args, Box::new(return_type), varargs.is_some(), is_closure, loc)
+    Type::Function(args, Box::new(return_type), varargs.is_some(), is_closure, loc.clone())
 );
 
 // Returns true if this function is a closure
 fn function_arrow<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, bool> {
     match input[0].0 {
-        Token::RightArrow => Ok((&input[1..], false, input[0].1)),
-        Token::FatArrow => Ok((&input[1..], true, input[0].1)),
-        _ => Err(ParseError::InRule("function type", input[0].1)),
+        Token::RightArrow => Ok((&input[1..], false, input[0].1.clone())),
+        Token::FatArrow => Ok((&input[1..], true, input[0].1.clone())),
+        _ => Err(ParseError::InRule("function type", input[0].1.clone())),
     }
 }
 
-parser!(type_application loc -> 'b Type<'b> =
+parser!(type_application loc -> 'b Type =
     type_constructor <- basic_type;
     args <- many1(basic_type);
-    Type::TypeApplication(Box::new(type_constructor), args, loc)
+    Type::TypeApplication(Box::new(type_constructor), args, loc.clone())
 );
 
-parser!(pair_type loc -> 'b Type<'b> =
+parser!(pair_type loc -> 'b Type =
     first <- or(&[type_application, basic_type], "type");
     _ <- expect(Token::Comma);
     rest !<- parse_type;
-    Type::Pair(Box::new(first), Box::new(rest), loc)
+    Type::Pair(Box::new(first), Box::new(rest), loc.clone())
 );
 
-parser!(int_type loc -> 'b Type<'b> =
+parser!(int_type loc -> 'b Type =
     kind <- int_type_token;
-    Type::Integer(Some(kind), loc)
+    Type::Integer(Some(kind), loc.clone())
 );
 
-parser!(float_type loc -> 'b Type<'b> =
+parser!(float_type loc -> 'b Type =
     kind <- float_type_token;
-    Type::Float(Some(kind), loc)
+    Type::Float(Some(kind), loc.clone())
 );
 
-parser!(polymorphic_int_type loc -> 'b Type<'b> =
+parser!(polymorphic_int_type loc -> 'b Type =
     _ <- expect(Token::PolymorphicIntType);
-    Type::Integer(None, loc)
+    Type::Integer(None, loc.clone())
 );
 
-parser!(polymorphic_float_type loc -> 'b Type<'b> =
+parser!(polymorphic_float_type loc -> 'b Type =
     _ <- expect(Token::PolymorphicFloatType);
-    Type::Float(None, loc)
+    Type::Float(None, loc.clone())
 );
 
-parser!(char_type loc -> 'b Type<'b> =
+parser!(char_type loc -> 'b Type =
     _ <- expect(Token::CharType);
-    Type::Char(loc)
+    Type::Char(loc.clone())
 );
 
-parser!(string_type loc -> 'b Type<'b> =
+parser!(string_type loc -> 'b Type =
     _ <- expect(Token::StringType);
-    Type::String(loc)
+    Type::String(loc.clone())
 );
 
-parser!(pointer_type loc -> 'b Type<'b> =
+parser!(pointer_type loc -> 'b Type =
     _ <- expect(Token::PointerType);
-    Type::Pointer(loc)
+    Type::Pointer(loc.clone())
 );
 
-parser!(boolean_type loc -> 'b Type<'b> =
+parser!(boolean_type loc -> 'b Type =
     _ <- expect(Token::BooleanType);
-    Type::Boolean(loc)
+    Type::Boolean(loc.clone())
 );
 
-parser!(unit_type loc -> 'b Type<'b> =
+parser!(unit_type loc -> 'b Type =
     _ <- expect(Token::UnitType);
-    Type::Unit(loc)
+    Type::Unit(loc.clone())
 );
 
-parser!(reference_type loc -> 'b Type<'b> =
+parser!(reference_type loc -> 'b Type =
     _ <- expect(Token::Ref);
-    Type::Reference(loc)
+    Type::Reference(loc.clone())
 );
 
-parser!(type_variable loc -> 'b Type<'b> =
+parser!(type_variable loc -> 'b Type =
     name <- identifier;
-    Type::TypeVariable(name, loc)
+    Type::TypeVariable(name, loc.clone())
 );
 
-parser!(user_defined_type loc -> 'b Type<'b> =
+parser!(user_defined_type loc -> 'b Type =
     name <- typename;
-    Type::UserDefined(name, loc)
+    Type::UserDefined(name, loc.clone())
 );

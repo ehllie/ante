@@ -27,7 +27,7 @@ const RECURSION_LIMIT: u32 = 500;
 
 /// Monomorphise this ast, simplifying it by removing all generics, traits,
 /// and unneeded ast constructs.
-pub fn monomorphise<'c>(ast: &ast::Ast<'c>, cache: ModuleCache<'c>) -> hir::Ast {
+pub fn monomorphise<'c>(ast: &ast::Ast, cache: ModuleCache<'c>) -> hir::Ast {
     let mut context = Context::new(cache);
     context.monomorphise(ast)
 }
@@ -102,7 +102,7 @@ impl<'c> Context<'c> {
         hir::DefinitionId(id)
     }
 
-    pub fn monomorphise(&mut self, ast: &ast::Ast<'c>) -> hir::Ast {
+    pub fn monomorphise(&mut self, ast: &ast::Ast) -> hir::Ast {
         use ast::Ast::*;
         match ast {
             Literal(literal) => self.monomorphise_literal(literal, literal.typ.as_ref().unwrap()),
@@ -248,7 +248,7 @@ impl<'c> Context<'c> {
     }
 
     fn size_of_union_type(
-        &mut self, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>], args: &[types::Type],
+        &mut self, info: &types::TypeInfo, variants: &[types::TypeConstructor], args: &[types::Type],
     ) -> usize {
         let bindings = typechecker::type_application_bindings(info, args, &self.cache);
 
@@ -376,7 +376,7 @@ impl<'c> Context<'c> {
     }
 
     fn convert_struct_type(
-        &mut self, id: TypeInfoId, info: &types::TypeInfo, fields: &[types::Field<'c>], args: Vec<types::Type>,
+        &mut self, id: TypeInfoId, info: &types::TypeInfo, fields: &[types::Field], args: Vec<types::Type>,
     ) -> Type {
         let bindings = typechecker::type_application_bindings(info, &args, &self.cache);
 
@@ -397,7 +397,7 @@ impl<'c> Context<'c> {
     /// find the largest variant in memory (with the given type bindings for any type variables)
     /// and return its field types.
     fn find_largest_union_variant(
-        &mut self, variants: &[types::TypeConstructor<'c>], bindings: &TypeBindings,
+        &mut self, variants: &[types::TypeConstructor], bindings: &TypeBindings,
     ) -> Option<Vec<types::Type>> {
         let variants: Vec<Vec<types::Type>> =
             fmap(variants, |variant| fmap(&variant.args, |arg| typechecker::bind_typevars(arg, bindings, &self.cache)));
@@ -411,8 +411,7 @@ impl<'c> Context<'c> {
     }
 
     fn convert_union_type(
-        &mut self, id: TypeInfoId, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>],
-        args: Vec<types::Type>,
+        &mut self, id: TypeInfoId, info: &types::TypeInfo, variants: &[types::TypeConstructor], args: Vec<types::Type>,
     ) -> Type {
         let bindings = typechecker::type_application_bindings(info, &args, &self.cache);
 
@@ -646,7 +645,7 @@ impl<'c> Context<'c> {
     /// self.impl_mappings may be set to bind a given variable id to another
     /// definition. This is currently only done for trait functions/values to
     /// point them to impls that actually have definitions.
-    fn get_definition_id(&self, variable: &ast::Variable<'c>) -> DefinitionInfoId {
+    fn get_definition_id(&self, variable: &ast::Variable) -> DefinitionInfoId {
         self.impl_mappings
             .last()
             .unwrap()
@@ -655,7 +654,7 @@ impl<'c> Context<'c> {
             .unwrap_or_else(|| variable.definition.unwrap())
     }
 
-    fn monomorphise_variable(&mut self, variable: &ast::Variable<'c>) -> hir::Ast {
+    fn monomorphise_variable(&mut self, variable: &ast::Variable) -> hir::Ast {
         let id = variable.id.unwrap();
         let required_impls = self.cache[id].required_impls.clone();
 
@@ -689,7 +688,7 @@ impl<'c> Context<'c> {
             let bindings = typechecker::try_unify(
                 typ,
                 definition_type,
-                definition.location,
+                &definition.location,
                 &mut self.cache,
                 "Unification error during monomorphisation: Could not unify definition $2 with instantiation $1",
             )
@@ -937,7 +936,7 @@ impl<'c> Context<'c> {
     ///
     /// TODO: This may be a clone of monomorphise_definition now
     fn monomorphise_nonlocal_definition(
-        &mut self, definition: &ast::Definition<'c>, definition_id: hir::DefinitionId, name: String,
+        &mut self, definition: &ast::Definition, definition_id: hir::DefinitionId, name: String,
     ) -> Definition {
         let value = self.monomorphise(&definition.expr);
         let value = self.fix_recursive_closure_calls(value, definition, definition_id);
@@ -979,7 +978,7 @@ impl<'c> Context<'c> {
     ///
     /// PRE-REQUISITE: `typ` must equal `self.follow_all_bindings(typ)`
     fn desugar_pattern(
-        &mut self, pattern: &ast::Ast<'c>, definition_id: hir::DefinitionId, typ: types::Type,
+        &mut self, pattern: &ast::Ast, definition_id: hir::DefinitionId, typ: types::Type,
         definitions: &mut Vec<hir::Ast>,
     ) {
         use {
@@ -1137,7 +1136,7 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn monomorphise_lambda(&mut self, lambda: &ast::Lambda<'c>) -> hir::Ast {
+    fn monomorphise_lambda(&mut self, lambda: &ast::Lambda) -> hir::Ast {
         self.definitions.push_local_scope();
 
         let t = lambda.typ.as_ref().unwrap();
@@ -1312,7 +1311,7 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn convert_builtin(&mut self, args: &[ast::Ast<'c>], result_type: &types::Type) -> hir::Ast {
+    fn convert_builtin(&mut self, args: &[ast::Ast], result_type: &types::Type) -> hir::Ast {
         use hir::Builtin::*;
         let arg = match &args[0] {
             ast::Ast::Literal(ast::Literal { kind: ast::LiteralKind::String(string), .. }) => string,
@@ -1390,7 +1389,7 @@ impl<'c> Context<'c> {
         })
     }
 
-    fn monomorphise_call(&mut self, call: &ast::FunctionCall<'c>) -> hir::Ast {
+    fn monomorphise_call(&mut self, call: &ast::FunctionCall) -> hir::Ast {
         match call.function.as_ref() {
             ast::Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => {
                 self.convert_builtin(&call.args, call.typ.as_ref().unwrap())
@@ -1455,7 +1454,7 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn monomorphise_definition(&mut self, definition: &ast::Definition<'c>) -> hir::Ast {
+    fn monomorphise_definition(&mut self, definition: &ast::Definition) -> hir::Ast {
         match definition.expr.as_ref() {
             // If the value is a function we can skip it and come back later to only
             // monomorphise it when we know what types it should be instantiated with.
@@ -1490,7 +1489,7 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn monomorphise_if(&mut self, if_: &ast::If<'c>) -> hir::Ast {
+    fn monomorphise_if(&mut self, if_: &ast::If) -> hir::Ast {
         let condition = Box::new(self.monomorphise(&if_.condition));
         let then = Box::new(self.monomorphise(&if_.then));
         let otherwise = Box::new(self.monomorphise(&if_.otherwise));
@@ -1499,11 +1498,11 @@ impl<'c> Context<'c> {
         hir::Ast::If(hir::If { condition, then, otherwise, result_type })
     }
 
-    fn monomorphise_return(&mut self, return_: &ast::Return<'c>) -> hir::Ast {
+    fn monomorphise_return(&mut self, return_: &ast::Return) -> hir::Ast {
         hir::Ast::Return(hir::Return { expression: Box::new(self.monomorphise(&return_.expression)) })
     }
 
-    fn monomorphise_sequence(&mut self, sequence: &ast::Sequence<'c>) -> hir::Ast {
+    fn monomorphise_sequence(&mut self, sequence: &ast::Sequence) -> hir::Ast {
         let statements = fmap(&sequence.statements, |statement| self.monomorphise(statement));
         hir::Ast::Sequence(hir::Sequence { statements })
     }
@@ -1543,7 +1542,7 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn monomorphise_member_access(&mut self, member_access: &ast::MemberAccess<'c>) -> hir::Ast {
+    fn monomorphise_member_access(&mut self, member_access: &ast::MemberAccess) -> hir::Ast {
         let lhs = self.monomorphise(&member_access.lhs);
         let lhs_type = self.follow_all_bindings(member_access.lhs.get_type().unwrap());
         let index = self.get_field_index(&member_access.field, &lhs_type);
@@ -1576,7 +1575,7 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn monomorphise_assignment(&mut self, assignment: &ast::Assignment<'c>) -> hir::Ast {
+    fn monomorphise_assignment(&mut self, assignment: &ast::Assignment) -> hir::Ast {
         let lhs = match self.monomorphise(&assignment.lhs) {
             hir::Ast::Builtin(hir::Builtin::Deref(value, _)) => *value,
             // TODO: Refactor mutability semantics to make this more resiliant

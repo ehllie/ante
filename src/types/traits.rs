@@ -251,8 +251,8 @@ impl TraitConstraint {
     }
 
     /// Get the location of the callsite where this TraitConstraint arose from
-    pub fn locate<'c>(&self, cache: &ModuleCache<'c>) -> Location<'c> {
-        cache[self.required.callsite.id()].location
+    pub fn locate<'c>(&self, cache: &ModuleCache<'c>) -> Location {
+        cache[self.required.callsite.id()].location.clone()
     }
 
     pub fn display<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> ConstraintSignaturePrinter<'a, 'c> {
